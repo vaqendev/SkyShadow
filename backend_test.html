@@ -198,48 +198,62 @@
 
     <script>
         const {DeckGL, PolygonLayer, TileLayer, BitmapLayer, GeoJsonLayer, FlyToInterpolator} = deck;
-       // FORCE LOCALHOST (Since we are running locally)
-const BACKEND_URL = "http://127.0.0.1:8000"; 
+        const BACKEND_URL = "http://127.0.0.1:8000"; 
 
         // STATE
         let deckgl;
         let drawing = false;
         let points = []; 
         let lastGeojson = null;
-        let cityGeojson = null; // Store searched city
+        let cityGeojson = null; 
         let baselineTemp = 0;
         let baselineNDVI = 0;
         
-        // VIEW STATE (Controlled for Animation)
+        // 🟢 GLOBAL HOTSPOT DATA STORAGE
+        let allHotspots = null; // Stores the raw Top 10 from backend
+
+        // VIEW STATE
         let viewState = {
             longitude: 77.20, latitude: 28.61, zoom: 12, pitch: 0, bearing: 0
         };
 
-        let hotspotCount = 5; // New Global Variable
+        let hotspotCount = 5; 
 
+        // 🟢 FIX 1: TOGGLE LOGIC
         function toggleHotspots() {
             const container = document.getElementById('hotspot-slider-container');
             const btn = document.getElementById('hotspot-toggle');
+            
             if (container.style.display === 'none') {
+                // TURN ON
                 container.style.display = 'block';
                 btn.innerText = "🎯 HOTSPOTS: ON";
                 btn.style.background = "#ff5555";
                 btn.style.color = "#fff";
+                
+                // If we have data, show it. If not, fetch it.
+                if (allHotspots) {
+                    updateLayers(); 
+                } else if (lastGeojson) {
+                    runAnalysis(false);
+                }
             } else {
+                // TURN OFF
                 container.style.display = 'none';
                 btn.innerText = "🎯 HOTSPOTS: OFF";
                 btn.style.background = "#220000";
                 btn.style.color = "#ff5555";
-                window.hotspotData = null; // Clear hotspots
                 updateLayers();
             }
         }
 
+        // 🟢 FIX 2: SLIDER UPDATE (Client Side Only)
         function updateHotspotCount() {
             const val = document.getElementById('hotspot-slider').value;
             hotspotCount = parseInt(val);
             document.getElementById('hotspot-count-val').innerText = `TOP ${val}`;
-            if(lastGeojson) runAnalysis(false); // Re-run instantly
+            // Removed runAnalysis() call here to prevent reloading
+            updateLayers(); 
         }
 
         // INIT MAP
@@ -256,137 +270,83 @@ const BACKEND_URL = "http://127.0.0.1:8000";
             layers: []
         });
 
-        // --- NEW: SEARCH FUNCTIONALITY ---
+        // SEARCH LOGIC
         let debounceTimer;
-        
-        // --- IN backend_test.html ---
-
-// REVISED handleSearch function
-
-async function handleSearch(query) {
-    clearTimeout(debounceTimer);
-    const list = document.getElementById('suggestions');
-    if(query.length < 3) { list.style.display = 'none'; return; }
-    
-    debounceTimer = setTimeout(async () => {
-        // limit=10 gives us a buffer to filter out bad results
-        const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&polygon_geojson=1&limit=10&addressdetails=1`;
-        
-        try {
-            const res = await fetch(url);
-            const rawData = await res.json();
+        async function handleSearch(query) {
+            clearTimeout(debounceTimer);
+            const list = document.getElementById('suggestions');
+            if(query.length < 3) { list.style.display = 'none'; return; }
             
-            // 1. Filter: Must be a Polygon/MultiPolygon (No points/dots)
-            let filtered = rawData.filter(place => 
-                place.geojson && 
-                (place.geojson.type === 'Polygon' || place.geojson.type === 'MultiPolygon')
-            );
-
-            // 2. Deduplication & Context Logic
-            const uniqueResults = [];
-            const seenNames = new Set();
-
-            filtered.forEach(place => {
-                // Create a "fingerprint" for the name to check duplicates
-                // e.g. "Mumbai, Maharashtra, India"
-                const nameKey = place.display_name.split(',').slice(0, 2).join(',').trim();
-                
-                if (!seenNames.has(nameKey)) {
-                    seenNames.add(nameKey);
-                    uniqueResults.push(place);
-                }
-            });
-
-            // 3. Render Top 5 Unique Results
-            list.innerHTML = '';
-            if(uniqueResults.length > 0) {
-                list.style.display = 'block';
-                
-                uniqueResults.slice(0, 5).forEach(place => {
-                    const div = document.createElement('div');
-                    div.className = 'suggestion-item';
-                    
-                    // Format the name: "Mumbai, Maharashtra"
-                    const mainName = place.display_name.split(',')[0];
-                    const subText = place.display_name.split(',').slice(1,3).join(',');
-                    
-                    // Add a tag like [CITY] or [ADMIN] based on the type
-                    const typeTag = place.addresstype ? `[${place.addresstype.toUpperCase()}]` : '[REGION]';
-
-                    // HTML for the suggestion
-                    div.innerHTML = `
-                        <span style="color:#0ff; font-weight:bold;">${mainName}</span> 
-                        <span style="font-size:9px; color:#666; margin-left:5px;">${typeTag}</span><br>
-                        <span style="font-size:10px; color:#888;">${subText}</span>
-                    `;
-                    
-                    div.onclick = () => selectLocation(place);
-                    list.appendChild(div);
-                });
-            } else {
-                list.style.display = 'none';
-            }
-        } catch(e) { console.error("Search error", e); }
-    }, 300);
-}
+            debounceTimer = setTimeout(async () => {
+                const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&polygon_geojson=1&limit=10&addressdetails=1`;
+                try {
+                    const res = await fetch(url);
+                    const rawData = await res.json();
+                    let filtered = rawData.filter(place => 
+                        place.geojson && (place.geojson.type === 'Polygon' || place.geojson.type === 'MultiPolygon')
+                    );
+                    const uniqueResults = [];
+                    const seenNames = new Set();
+                    filtered.forEach(place => {
+                        const nameKey = place.display_name.split(',').slice(0, 2).join(',').trim();
+                        if (!seenNames.has(nameKey)) {
+                            seenNames.add(nameKey);
+                            uniqueResults.push(place);
+                        }
+                    });
+                    list.innerHTML = '';
+                    if(uniqueResults.length > 0) {
+                        list.style.display = 'block';
+                        uniqueResults.slice(0, 5).forEach(place => {
+                            const div = document.createElement('div');
+                            div.className = 'suggestion-item';
+                            const mainName = place.display_name.split(',')[0];
+                            const typeTag = place.addresstype ? `[${place.addresstype.toUpperCase()}]` : '[REGION]';
+                            div.innerHTML = `<span style="color:#0ff; font-weight:bold;">${mainName}</span> <span style="font-size:9px; color:#666; margin-left:5px;">${typeTag}</span>`;
+                            div.onclick = () => selectLocation(place);
+                            list.appendChild(div);
+                        });
+                    } else {
+                        list.style.display = 'none';
+                    }
+                } catch(e) { console.error("Search error", e); }
+            }, 300);
+        }
 
         function selectLocation(place) {
-            // 1. Hide search UI
             document.getElementById('suggestions').style.display = 'none';
             document.getElementById('city-search').value = "";
-            
-            // 2. Trigger "Cool Animation"
             document.getElementById('scanner').style.display = 'block';
             setTimeout(() => document.getElementById('scanner').style.display = 'none', 2500);
-
-            // 3. Move Camera
             const lat = parseFloat(place.lat);
             const lon = parseFloat(place.lon);
-            
-            viewState = {
-                ...viewState,
-                longitude: lon, latitude: lat, zoom: 11,
-                transitionDuration: 2000,
-                transitionInterpolator: new FlyToInterpolator()
-            };
+            viewState = { ...viewState, longitude: lon, latitude: lat, zoom: 11, transitionDuration: 2000, transitionInterpolator: new FlyToInterpolator() };
             deckgl.setProps({viewState});
-
-            // 4. Set City Boundary
             if (place.geojson) {
                 cityGeojson = place.geojson;
                 updateLayers();
-                
-                // 5. Show Mission Choice after animation
-                setTimeout(() => {
-                    document.getElementById('mission-overlay').style.display = 'block';
-                }, 2100);
+                setTimeout(() => { document.getElementById('mission-overlay').style.display = 'block'; }, 2100);
             }
         }
 
         function executeMission(option) {
             document.getElementById('mission-overlay').style.display = 'none';
-            
             if (option === 1) {
-                // OPTION 1: ANALYSE WHOLE CITY
                 if (!cityGeojson) return;
-                lastGeojson = cityGeojson; // Set the active geometry to the city
-                runAnalysis(true); // Run backend
+                lastGeojson = cityGeojson; 
+                runAnalysis(true); 
             } else {
-                // OPTION 2: MANUAL BOUNDING
-                // Keep the white boundary as visual reference, but let user draw new one
                 startDraw();
             }
         }
 
-        // --- DRAWING LOGIC (Unchanged) ---
         function startDraw() {
             drawing = true;
             points = [];
             lastGeojson = null;
             window.resultUrl = null; 
-            window.hotspotData = null;
-            updateLayers(); // Will keep city boundary if exists
-            
+            allHotspots = null; // Clear old hotspots
+            updateLayers(); 
             const btn = document.getElementById('draw-btn');
             btn.innerText = "🔴 DRAWING...";
             btn.style.borderColor = "red";
@@ -405,27 +365,24 @@ async function handleSearch(query) {
                 drawing = false;
                 const closedRing = [...points, points[0]];
                 lastGeojson = { "type": "Polygon", "coordinates": [closedRing] };
-                
                 document.getElementById('draw-btn').innerText = "⚡ DEFINE NEW REGION";
                 document.getElementById('draw-btn').style.borderColor = "#0ff";
                 document.getElementById('draw-btn').style.color = "#0ff";
-                
                 document.getElementById('tree-slider').value = 0;
                 runAnalysis(true); 
             }
         });
 
-        // LAYER MANAGER (Updated for City Boundary)
-        // LAYER MANAGER
+        // 🟢 FIX 3: OPTIMIZED LAYER MANAGER (Client Side Slicing)
         function updateLayers() {
             const layers = [];
             
-            // 1. BOTTOM LAYER: HEATMAP
+            // A. ANALYSIS HEATMAP (Base Layer)
             if (window.resultUrl) {
                 layers.push(new TileLayer({
                     id: 'heatmap-' + Date.now(), 
                     data: window.resultUrl,
-                    minZoom: 0, maxZoom: 19, tileSize: 256, 
+                    minZoom: 0, maxZoom: 19, tileSize: 256,
                     opacity: 0.6, 
                     renderSubLayers: props => {
                         const {bbox: {west, south, east, north}} = props.tile;
@@ -436,15 +393,7 @@ async function handleSearch(query) {
                 }));
             }
 
-            // 2. MIDDLE LAYER: CITY BOUNDARY
-            if (cityGeojson) {
-                layers.push(new GeoJsonLayer({
-                    id: 'city-glow', data: cityGeojson, filled: false, stroked: true,
-                    getLineColor: [255, 255, 255, 50], getLineWidth: 80, lineWidthMinPixels: 6
-                }));
-            }
-
-            // 3. TOP LAYER: HOTSPOTS (Must be added LAST to be on TOP)
+            // B. CRITICAL RED ZONES (Hotspots)
             if (window.hotspotData) {
                 layers.push(new GeoJsonLayer({
                     id: 'critical-zones',
@@ -462,22 +411,47 @@ async function handleSearch(query) {
                 }));
             }
 
-            // 4. UI DRAWING LAYER (Always absolute top)
+            // C. CITY BOUNDARY (Fixed "Grey" Issue)
+            if (cityGeojson) {
+                // 1. THE GLOW (Wider, Brighter, Slight Cyan Tint for "Electric" look)
+                layers.push(new GeoJsonLayer({
+                    id: 'city-glow',
+                    data: cityGeojson,
+                    filled: false,
+                    stroked: true,
+                    getLineColor: [200, 255, 255, 100], // <--- CHANGED: Brighter Alpha (100) + Tint
+                    getLineWidth: 80, 
+                    lineWidthMinPixels: 6
+                }));
+                // 2. THE CORE (Solid White)
+                layers.push(new GeoJsonLayer({
+                    id: 'city-core',
+                    data: cityGeojson,
+                    filled: false,
+                    stroked: true,
+                    getLineColor: [255, 255, 255, 255], 
+                    getLineWidth: 20, 
+                    lineWidthMinPixels: 2
+                }));
+            }
+
+            // D. USER DRAWING (Fixed "Missing Blue Fill" Issue)
             if (points.length > 0) {
                 layers.push(new PolygonLayer({
                     id: 'poly',
                     data: [{ polygon: points }],
                     getPolygon: d => d.polygon,
-                    getFillColor: [0, 255, 255, 40], // Restored Blue Opacity
+                    getFillColor: [0, 255, 255, 40], // <--- CHANGED: Restored Blue Opacity
                     getLineColor: [0, 255, 255, 255], 
-                    getLineWidth: 2, lineWidthMinPixels: 2
+                    getLineWidth: 2, 
+                    lineWidthMinPixels: 2
                 }));
             }
             
             deckgl.setProps({ layers });
         }
         
-        // --- BACKEND LOGIC (Unchanged) ---
+        // HUD LOGIC
         function updatePredictiveHUD() {
             const addedVeg = parseFloat(document.getElementById('tree-slider').value);
             document.getElementById('slider-val').innerText = `+${Math.round(addedVeg * 100)}%`;
@@ -492,6 +466,7 @@ async function handleSearch(query) {
             document.getElementById('ndvi-text').innerText = `${baselineNDVI} -> ${(baselineNDVI + addedVeg).toFixed(2)}`;
         }
 
+        // 🟢 FIX 4: ANALYSIS RUNNER (Always fetch 10)
         async function runAnalysis(isInitial = false) {
             if (!lastGeojson) return;
             document.getElementById('status').innerText = "🛰️ COMPUTING...";
@@ -500,13 +475,18 @@ async function handleSearch(query) {
             try {
                 const res = await fetch(`${BACKEND_URL}/analyze`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ geojson: lastGeojson, tree_increase: treeVal, hotspot_count: hotspotCount })
+                    // Force 10 hotspots so we can slice them client-side later
+                    body: JSON.stringify({ geojson: lastGeojson, tree_increase: treeVal, hotspot_count: 10 })
                 });
                 const data = await res.json();
 
                 if (data.map_url) {
                     window.resultUrl = data.map_url;
+                    
+                    // SAVE GLOBALLY
+                    allHotspots = data.hotspots; 
                     window.hotspotData = data.hotspots;
+
                     if(data.live_temp && data.live_temp !== "N/A") {
                         document.getElementById('live-temp-display').innerText = `${data.live_temp}°C`;
                     }

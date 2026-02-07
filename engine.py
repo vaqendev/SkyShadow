@@ -41,7 +41,7 @@ def get_live_weather(lat, lon):
 def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_count: int = 5):
     try:
         # A. GEOMETRY GUARD
-        region = ee.Geometry(geojson).simplify(maxError=10).buffer(distance=0, maxError=1)
+        region = ee.Geometry(geojson).simplify(maxError=100).buffer(distance=0, maxError=1)
         center = region.centroid().coordinates().getInfo()
 
         # B. DATA FETCH
@@ -73,7 +73,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
         hotspots_geojson = []
         try:
             # 1. Normalize
-            stats_local = lst_raw.reduceRegion(reducer=ee.Reducer.minMax(), geometry=region, scale=500, bestEffort=True)
+            stats_local = lst_raw.reduceRegion(reducer=ee.Reducer.minMax(), geometry=region, scale=100, bestEffort=True)
             min_temp = ee.Number(stats_local.get('lst_min'))
             max_temp = ee.Number(stats_local.get('lst_max'))
             denom = max_temp.subtract(min_temp).max(0.1)
@@ -84,11 +84,12 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
 
             # 3. SAMPLE POINTS (The Fix)
             # Instead of heavy vectorization, just grab 500 candidate pixels
+            # This ensures we find hotspots even in small manual drawings.
             samples = priority_score.sample(
                 region=region,
-                scale=200,      # Coarse scale is fine for locating hotspots
-                numPixels=500,  # Grab 500 random points
-                geometries=True # Keep their location
+                scale=100,       # <--- WAS 200, NOW 70
+                numPixels=500,  
+                geometries=True 
             )
 
             # 4. FILTER & SORT
@@ -112,7 +113,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
 
         # F. STATISTICS
         stats = simulated_lst.addBands(ndvi_raw).addBands(ndbi_raw).reduceRegion(
-            reducer=ee.Reducer.mean(), geometry=region, scale=500, bestEffort=True, maxPixels=1e9
+            reducer=ee.Reducer.mean(), geometry=region, scale=100, bestEffort=True, maxPixels=1e9
         ).getInfo()
 
         return {
