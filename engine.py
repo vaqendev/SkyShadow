@@ -2,7 +2,10 @@ import ee
 import os
 import json
 import requests
+import pandas as pd
+import numpy as np
 from google.oauth2.service_account import Credentials
+from sklearn.linear_model import LinearRegression
 
 # --- 1. AUTHENTICATION ---
 PROJECT_ID = 'global-sun-484918-f5' 
@@ -24,76 +27,87 @@ else:
 def get_live_weather(lat, lon):
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m"
-        # Short timeout so it doesn't hang the server
         res = requests.get(url, timeout=1.5).json()
         return res['current']['temperature_2m']
     except:
         return "N/A"
 
 # --- 3. ANALYSIS ENGINE ---
-def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
+def analyze_custom_region(geojson: dict):
     try:
-        # A. GEOMETRY FIX (CRITICAL UPDATE)
-        # Changed .buffer(0) -> .buffer(0, 1). 
-        # This allows a 1-meter "wiggle room" to fix shapes without crashing.
+        # A. GEOMETRY
         region = ee.Geometry(geojson).buffer(distance=0, maxError=1)
         center = region.centroid().coordinates().getInfo()
 
-        # B. DATA FETCH (Summer 2024)
-        l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(region).filterDate('2024-04-01', '2024-06-30').filter(ee.Filter.lt('CLOUD_COVER', 25)).median()
-        s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(region).filterDate('2024-04-01', '2024-06-30').filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 25)).median()
+        # B. DATA FETCH (FULL YEAR 2025 MEDIAN)
+        # Using annual median removes winter/summer outliers for a stable "Avg Temp"
+        l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2") \
+            .filterBounds(region) \
+            .filterDate('2025-01-01', '2025-12-31') \
+            .median() 
 
         # C. INDICES
-        ndvi_raw = s2.normalizedDifference(['B8', 'B4']).rename('ndvi_raw')
-        lst_raw = l9.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15).rename('lst_raw')
+        # NDVI (Vegetation) & NDBI (Concrete)
+        ndvi = l9.normalizedDifference(['SR_B5', 'SR_B4']).rename('ndvi')
+        ndbi = l9.normalizedDifference(['SR_B6', 'SR_B5']).rename('ndbi')
+        
+        # LST (Temp): Kelvin -> Celsius
+        lst_raw = l9.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15).rename('lst')
 
-        # --- D. SMART GROWTH LOGIC ---
-        inc_amount = float(tree_increase)
-        effort = ee.Image.constant(inc_amount)
+        combined_image = ee.Image([ndvi, ndbi, lst_raw])
 
-        # FIX 2: Corrected '.and' to '.And' (Capital A) and used Parentheses
-        real_increase = (
-            effort.where(ndvi_raw.lt(0.15), effort.multiply(0.2))
-                  .where(ndvi_raw.gte(0.15).And(ndvi_raw.lt(0.3)), effort.multiply(0.6))
+        # D. DATA MINING (Fetch Raw Pixels for Client-Side Rendering)
+        # We fetch 1500 points to create a dense 2D grid
+        samples = combined_image.addBands(ee.Image.pixelLonLat()).sample(
+            region=region,
+            scale=30,      # Native Landsat Resolution
+            numPixels=1500,
+            geometries=True 
         )
-
-        # Calculate Simulation
-        simulated_ndvi = ndvi_raw.add(real_increase).min(0.7).rename('sim_ndvi')
-
-        # Cooling Math (Conservative Slope: 12.0)
-        cooling_effect = simulated_ndvi.subtract(ndvi_raw).multiply(12.0)
-        final_temp = lst_raw.subtract(cooling_effect).subtract(4.0).rename('final_temp')
-
-        # --- E. STATS ---
-        stats = final_temp.addBands(simulated_ndvi).reduceRegion(
-            reducer=ee.Reducer.mean(), geometry=region, scale=100, bestEffort=True, maxPixels=1e9
-        ).getInfo()
-
-        avg_temp = stats.get('final_temp')
-        avg_ndvi = stats.get('sim_ndvi')
         
-        # Handle Clouds/Null Data
-        if avg_temp is None: avg_temp = 0.0
-        if avg_ndvi is None: avg_ndvi = 0.0
-
-        # --- F. VISUALS ---
-        visual_image = final_temp.clip(region)
-        vis_params = {
-            'min': 28, 'max': 44, 
-            'palette': ['00FFFF', '00FF00', 'FFFF00', 'FF7F00', 'FF0000', '8B0000'], 
-            'opacity': 0.65
-        }
+        data_list = samples.getInfo()['features']
         
-        map_url = visual_image.getMapId(vis_params)['tile_fetcher'].url_format
-        live_temp = get_live_weather(center[1], center[0])
+        if not data_list:
+            return {"error": "No valid pixels found."}
+
+        # E. ML TRAINING
+        df = pd.DataFrame([f['properties'] for f in data_list])
+        df = df.dropna()
+
+        if df.empty:
+            return {"error": "Insufficient data for ML."}
+
+        # Train: Temp = f(NDVI, NDBI)
+        X = df[['ndvi', 'ndbi']]
+        y = df['lst']
+        model = LinearRegression()
+        model.fit(X, y)
+
+        # F. PREPARE POINTS PAYLOAD
+        # We send these points to the frontend to draw the 2D Heatmap Grid
+        points_payload = []
+        for index, row in df.iterrows():
+            coords = data_list[index]['geometry']['coordinates']
+            points_payload.append({
+                "coordinates": coords,
+                "ndvi": round(row['ndvi'], 3),
+                "ndbi": round(row['ndbi'], 3),
+                "temp": round(row['lst'], 1)
+            })
 
         return {
-            "map_url": map_url,
-            "live_temp": live_temp,
+            "status": "success",
+            "live_temp": get_live_weather(center[1], center[0]),
+            "ml_model": {
+                "coefficients": {
+                    "ndvi_slope": float(model.coef_[0]),
+                    "base_intercept": float(model.intercept_)
+                }
+            },
+            "points": points_payload, # <--- The data for the dynamic grid
             "stats": {
-                "avg_temp": round(avg_temp, 1),
-                "avg_ndvi": round(avg_ndvi, 2),
-                "risk_score": "Critical" if avg_temp > 40 else "High" if avg_temp > 35 else "Moderate"
+                "avg_temp_observed": round(df['lst'].mean(), 1),
+                "avg_ndvi_observed": round(df['ndvi'].mean(), 2)
             }
         }
 
