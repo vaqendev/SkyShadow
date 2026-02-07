@@ -59,3 +59,14 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
         visual_image = simulated_lst.clip(region)
         vis_params = {'min': 30, 'max': 45, 'palette': ['00FF00', 'FFFF00', 'FF7F00', 'FF0000'], 'opacity': 0.6}
         map_url = visual_image.getMapId(vis_params)['tile_fetcher'].url_format
+
+        # defining thermal hotspots 
+        hotspots_geojson = []
+        #try:
+
+        stats_local = lst_raw.reduceRegion(reducer=ee.Reducer.minMax(), geometry=region, scale=300, bestEffort=True)
+        min_temp = ee.Number(stats_local.get('lst_min'))
+        max_temp = ee.Number(stats_local.get('lst_max'))
+        denom = max_temp.subtract(min_temp).max(0.1)
+        lst_norm = lst_raw.subtract(min_temp).divide(denom)
+        priority_score = lst_norm.subtract(ndvi_raw).rename('score')
