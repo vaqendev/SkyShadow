@@ -50,3 +50,12 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
         ndvi_raw = s2.normalizedDifference(['B8', 'B4']).rename('ndvi')
         ndbi_raw = s2.normalizedDifference(['B11', 'B8']).rename('ndbi')
         lst_raw = lst_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15).rename('lst')
+
+        # fetching and loading of map_tile url and its colour palette
+        cooling_efficiency = ndbi_raw.multiply(10).add(5).clamp(2, 15)
+        cooling_map = cooling_efficiency.multiply(float(tree_increase))
+        simulated_lst = lst_raw.subtract(cooling_map)
+
+        visual_image = simulated_lst.clip(region)
+        vis_params = {'min': 30, 'max': 45, 'palette': ['00FF00', 'FFFF00', 'FF7F00', 'FF0000'], 'opacity': 0.6}
+        map_url = visual_image.getMapId(vis_params)['tile_fetcher'].url_format
