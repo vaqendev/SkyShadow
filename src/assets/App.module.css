@@ -165,6 +165,25 @@
     border-radius: 0px;
 }
 
+.slider_container{
+    padding: 10px;
+    text-align: left;
+}
+.slider_container .slider_heading{
+    font-size: 1rem;
+}
+@keyframes stretch{
+    from{width: 0%}
+    to{width: 100%;}
+}
+
+.slider_heading .slider_heading_animate{
+    animation: stretch 1.5s ease-in forwards;
+    display: block;
+    height: 5px;
+    background-color: #f0f0f0;
+}
+
 .slider_typo{
     display: flex;
     justify-content: space-between;
@@ -182,4 +201,8 @@
 
 .alert_button{
     background-color: rgb(12 31 41);
+}
+
+.slider_val{
+    color: #00ffff;
 }

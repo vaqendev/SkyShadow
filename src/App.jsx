@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import './App.css';
 import DrawControl from "./Drawcontrol";
 
@@ -96,6 +96,7 @@ function App() {
   const mapRef = useRef();
   const drawRef = useRef();
   const scanAnimationElement = useRef();
+  const sliderRef = useRef(null);
 
   const [selected, setSelected] = useState(null);
   const [hoverInfo, setHoverInfo] = useState(null);
@@ -106,8 +107,8 @@ function App() {
   const [highlightedGeoJson, setHighlightedGeoJson] = useState(null);
   const [showMissionControl, setMissionControlView] = useState(false);
   const [tileLoaded, setTileLoaded] = useState(false);
-
   const [locationCenter, setLocationCenter] = useState(null);
+  const [sliderValue, setSliderValue] = useState(0);
 
   const handleSearch = async function(e){
     if(e.key == "Enter"){
@@ -138,7 +139,7 @@ function App() {
 
   const performFreshView = (e) => {
     // console.log(drawRef);
-    drawRef.current.deleteAll();
+    // drawRef.current.deleteAll();sop0oiplk;.,
     setAreaAlert(prev => !prev);
     setHighlightedGeoJson(null);
     setMissionControlView(false);
@@ -280,12 +281,17 @@ function App() {
 
   }
 
+  const handleSliderValueChange = (e) => {
+    setSliderValue(e[0]);
+  }
+
   const handleMissionControlClick = (e) => {
 
     const calculatedArea = area(highlightedGeoJson);
     if((calculatedArea / 1000000) <= 1483){
       // load the corresponding tile.
       console.log("Loading the corresponding tiles...");
+      setTileLoaded(true);
 
     }else setAreaAlert(true);
     setMissionControlView(false);
@@ -349,14 +355,16 @@ function App() {
                 </div> 
               </CardContent>
               <div className={styles.slider_container}>
+                <h2 className={styles.slider_heading}>Vegetation Increase:<span className={styles.slider_heading_animate} /></h2>
                 <div className={styles.slider_typo}>
                   <span id="slider-min">0%</span>
+                  <span id="slider-present" className={styles.slider_val}>{sliderValue}%</span>
                   <span id="slider-max">30%</span>
                 </div>
 
-                <Slider disabled className={styles.ndvi_slider} defaultValue={[0]} max={30} step={2} />    
+                <Slider onValueChange={handleSliderValueChange} disabled={!tileLoaded} className={styles.ndvi_slider} defaultValue={[0]} max={30} step={2} />    
               </div>
-              <Button className={styles.define_target_btn}>
+              <Button onClick={() => {setPolygonControl(prev => !prev)}} className={styles.define_target_btn}>
                 Define Target Zone
               </Button>
             </Card>
