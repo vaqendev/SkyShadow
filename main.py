@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from engine import get_tile_url
+from engine import get_tile_url, get_city_stats
 
 app = FastAPI()
 
@@ -21,3 +21,7 @@ def get_map_layer():
     except Exception as e:
         print(f"Error: {e}")
         return {"error": str(e)}
+
+@app.get("/stats")
+def get_stats(lat: float, lon: float):
+    return get_city_stats(lat, lon)
