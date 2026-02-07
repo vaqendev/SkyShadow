@@ -2,6 +2,7 @@ import ee
 import os
 import json
 import requests
+import math
 from google.oauth2.service_account import Credentials
 
 
@@ -72,7 +73,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
         priority_score = lst_norm.subtract(ndvi_raw).rename('score')
 
 
-        # taking random points and computing priority score for these random points and sorting/ranking them
+        # taking random points and computing priority score for these random points and sorting/ranking them and fetching their top 10
         samples = priority_score.sample(
                 region=region,
                 scale=200,      
@@ -80,6 +81,18 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
                 geometries=True 
             )
         top_samples = samples.sort('score', False).limit(10) # Get top 10 for the slider
+
+        # dynamic bounding box for thermal hotspot region
+        region_area = region.area(maxError=300).getInfo()
+        side_length = math.sqrt(region_area)
+        # box size to roughly 5% of the region's width (1/20th)
+        dynamic_radius = side_length * 0.05
+        #  Clamp results to keep them sane (Min 30m radius, Max 2000m radius)
+        dynamic_radius = max(30, min(dynamic_radius, 2000))
+        def point_to_box(feature):
+            # Uses the dynamic_radius calculated from the user's polygon area
+            return feature.buffer(dynamic_radius).bounds()
+        
 
 
 
