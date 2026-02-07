@@ -41,7 +41,7 @@ def get_live_weather(lat, lon):
 def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_count: int = 5):
     try:
         # A. GEOMETRY GUARD
-        region = ee.Geometry(geojson).simplify(maxError=10).buffer(distance=0, maxError=1)
+        region = ee.Geometry(geojson).simplify(maxError=100).buffer(distance=0, maxError=1)
         center = region.centroid().coordinates().getInfo()
 
         # B. DATA FETCH
@@ -87,7 +87,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
             # This ensures we find hotspots even in small manual drawings.
             samples = priority_score.sample(
                 region=region,
-                scale=70,       # <--- WAS 200, NOW 70
+                scale=100,       # <--- WAS 200, NOW 70
                 numPixels=500,  
                 geometries=True 
             )
@@ -113,7 +113,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
 
         # F. STATISTICS
         stats = simulated_lst.addBands(ndvi_raw).addBands(ndbi_raw).reduceRegion(
-            reducer=ee.Reducer.mean(), geometry=region, scale=70, bestEffort=True, maxPixels=1e9
+            reducer=ee.Reducer.mean(), geometry=region, scale=100, bestEffort=True, maxPixels=1e9
         ).getInfo()
 
         return {
