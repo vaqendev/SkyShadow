@@ -126,6 +126,17 @@
             <span class="label-sm">CURRENT LIVE WEATHER</span>
         </div>
 
+        <div class="hotspot-panel" style="margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">
+            <button id="hotspot-toggle" onclick="toggleHotspots()" style="background:#220000; color:#ff5555; border-color:#ff5555;">🎯 HOTSPOTS: OFF</button>
+            <div id="hotspot-slider-container" style="display:none; margin-top:5px;">
+                <div style="display:flex; justify-content:space-between; font-size:10px; color:#ff8888; margin-bottom:2px;">
+                    <span>SENSITIVITY</span>
+                    <span id="hotspot-count-val">TOP 5</span>
+                </div>
+                <input type="range" id="hotspot-slider" min="1" max="10" step="1" value="5" oninput="updateHotspotCount()">
+            </div>
+        </div>
+
         <button onclick="startDraw()" id="draw-btn">⚡ DEFINE TARGET ZONE</button>
         
         <div id="sim-controls" style="display:none;">
@@ -203,6 +214,33 @@ const BACKEND_URL = "http://127.0.0.1:8000";
         let viewState = {
             longitude: 77.20, latitude: 28.61, zoom: 12, pitch: 0, bearing: 0
         };
+
+        let hotspotCount = 5; // New Global Variable
+
+        function toggleHotspots() {
+            const container = document.getElementById('hotspot-slider-container');
+            const btn = document.getElementById('hotspot-toggle');
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                btn.innerText = "🎯 HOTSPOTS: ON";
+                btn.style.background = "#ff5555";
+                btn.style.color = "#fff";
+            } else {
+                container.style.display = 'none';
+                btn.innerText = "🎯 HOTSPOTS: OFF";
+                btn.style.background = "#220000";
+                btn.style.color = "#ff5555";
+                window.hotspotData = null; // Clear hotspots
+                updateLayers();
+            }
+        }
+
+        function updateHotspotCount() {
+            const val = document.getElementById('hotspot-slider').value;
+            hotspotCount = parseInt(val);
+            document.getElementById('hotspot-count-val').innerText = `TOP ${val}`;
+            if(lastGeojson) runAnalysis(false); // Re-run instantly
+        }
 
         // INIT MAP
         deckgl = new DeckGL({
@@ -476,7 +514,7 @@ async function handleSearch(query) {
             try {
                 const res = await fetch(`${BACKEND_URL}/analyze`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ geojson: lastGeojson, tree_increase: treeVal })
+                    body: JSON.stringify({ geojson: lastGeojson, tree_increase: treeVal, hotspot_count: hotspotCount })
                 });
                 const data = await res.json();
 

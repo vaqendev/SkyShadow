@@ -38,7 +38,7 @@ def get_live_weather(lat, lon):
     except:
         return "N/A"
 
-def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
+def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_count: int = 5):
     try:
         # A. GEOMETRY GUARD
         region = ee.Geometry(geojson).simplify(maxError=500).buffer(distance=0, maxError=1)
@@ -93,7 +93,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
 
             # 4. FILTER & SORT
             # Sort by score descending (Worst first) and take Top 5
-            top_samples = samples.sort('score', False).limit(5)
+            top_samples = samples.sort('score', False).limit(hotspot_count)
 
             # 5. CONVERT POINTS TO BOXES
             # We mechanically turn the center-point into a 500m x 500m square

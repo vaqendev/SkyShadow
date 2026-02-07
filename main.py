@@ -15,6 +15,7 @@ app.add_middleware(
 class AnalysisRequest(BaseModel):
     geojson: Dict[str, Any]
     tree_increase: float = 0.0 
+    hotspot_count: int = 5
 
 class GrowthRequest(BaseModel):
     geojson: Dict[str, Any]
@@ -25,7 +26,8 @@ async def analyze_region(request: AnalysisRequest):
     result = await run_in_threadpool(
         engine.analyze_custom_region, 
         request.geojson, 
-        request.tree_increase
+        request.tree_increase,
+        request.hotspot_count
     )
     
     # Graceful Error Handling (Prevents 500 Crash)
