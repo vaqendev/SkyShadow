@@ -384,6 +384,7 @@ async function handleSearch(query) {
             points = [];
             lastGeojson = null;
             window.resultUrl = null; 
+            window.hotspotData = null;
             updateLayers(); // Will keep city boundary if exists
             
             const btn = document.getElementById('draw-btn');
@@ -419,12 +420,12 @@ async function handleSearch(query) {
         function updateLayers() {
             const layers = [];
             
-            // A. ANALYSIS HEATMAP (Base Layer)
+            // 1. BOTTOM LAYER: HEATMAP
             if (window.resultUrl) {
                 layers.push(new TileLayer({
-                    id: 'heatmap-' + Date.now(), // Force refresh on new URL
+                    id: 'heatmap-' + Date.now(), 
                     data: window.resultUrl,
-                    minZoom: 0, maxZoom: 19, tileSize: 256,
+                    minZoom: 0, maxZoom: 19, tileSize: 256, 
                     opacity: 0.6, 
                     renderSubLayers: props => {
                         const {bbox: {west, south, east, north}} = props.tile;
@@ -435,19 +436,25 @@ async function handleSearch(query) {
                 }));
             }
 
-            // NEW: CRITICAL RED ZONES (The "Hot Blocks") 
-            // Sits ON TOP of Heatmap
+            // 2. MIDDLE LAYER: CITY BOUNDARY
+            if (cityGeojson) {
+                layers.push(new GeoJsonLayer({
+                    id: 'city-glow', data: cityGeojson, filled: false, stroked: true,
+                    getLineColor: [255, 255, 255, 50], getLineWidth: 80, lineWidthMinPixels: 6
+                }));
+            }
+
+            // 3. TOP LAYER: HOTSPOTS (Must be added LAST to be on TOP)
             if (window.hotspotData) {
                 layers.push(new GeoJsonLayer({
                     id: 'critical-zones',
                     data: window.hotspotData,
                     filled: true,
                     stroked: true,
-                    // UPDATED VISUALS FOR HIGHER CONTRAST
-                    getFillColor: [255, 0, 0, 60],   // Slightly more visible red fill
-                    getLineColor: [255, 255, 255, 255], // WHITE BORDER to pop against the dark map
+                    getFillColor: [255, 0, 0, 60],   
+                    getLineColor: [255, 255, 255, 255], 
                     getLineWidth: 40,
-                    lineWidthMinPixels: 3,           // Thicker lines
+                    lineWidthMinPixels: 3,           
                     pickable: true,
                     autoHighlight: true,
                     highlightColor: [255, 255, 0, 100], 
@@ -455,35 +462,13 @@ async function handleSearch(query) {
                 }));
             }
 
-            // B. CITY BOUNDARY (The "White Bold Ambient" Layer)
-            if (cityGeojson) {
-                layers.push(new GeoJsonLayer({
-                    id: 'city-glow',
-                    data: cityGeojson,
-                    filled: false,
-                    stroked: true,
-                    getLineColor: [255, 255, 255, 50], 
-                    getLineWidth: 80, 
-                    lineWidthMinPixels: 6
-                }));
-                layers.push(new GeoJsonLayer({
-                    id: 'city-core',
-                    data: cityGeojson,
-                    filled: false,
-                    stroked: true,
-                    getLineColor: [255, 255, 255, 255], 
-                    getLineWidth: 20, 
-                    lineWidthMinPixels: 2
-                }));
-            }
-
-            // C. USER DRAWING (The Cyan Line)
+            // 4. UI DRAWING LAYER (Always absolute top)
             if (points.length > 0) {
                 layers.push(new PolygonLayer({
                     id: 'poly',
                     data: [{ polygon: points }],
                     getPolygon: d => d.polygon,
-                    getFillColor: [0, 0, 0, 0], 
+                    getFillColor: [0, 255, 255, 40], // Restored Blue Opacity
                     getLineColor: [0, 255, 255, 255], 
                     getLineWidth: 2, lineWidthMinPixels: 2
                 }));
@@ -491,6 +476,7 @@ async function handleSearch(query) {
             
             deckgl.setProps({ layers });
         }
+        
         // --- BACKEND LOGIC (Unchanged) ---
         function updatePredictiveHUD() {
             const addedVeg = parseFloat(document.getElementById('tree-slider').value);

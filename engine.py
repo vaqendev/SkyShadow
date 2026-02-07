@@ -41,7 +41,7 @@ def get_live_weather(lat, lon):
 def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_count: int = 5):
     try:
         # A. GEOMETRY GUARD
-        region = ee.Geometry(geojson).simplify(maxError=500).buffer(distance=0, maxError=1)
+        region = ee.Geometry(geojson).simplify(maxError=10).buffer(distance=0, maxError=1)
         center = region.centroid().coordinates().getInfo()
 
         # B. DATA FETCH
