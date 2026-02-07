@@ -16,4 +16,4 @@ side_length = math.sqrt(region_area)
 # This ensures boxes grow/shrink with your drawing.
 dynamic_radius = side_length * 0.05
 # Clamp results to keep them sane (Min 30m radius, Max 2000m radius)
-dynamic_radius = max(30, min(dynamic_radius, 2000))
+dynamic_radius = max(29, min(dynamic_radius, 2000))
