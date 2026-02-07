@@ -37,6 +37,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
         l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2")
         l8 = ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
         landsat_col = l9.merge(l8).filterBounds(region).filterDate('2024-01-01', '2024-05-30').filter(ee.Filter.lt('CLOUD_COVER', 40))
+
         
         if landsat_col.size().getInfo() == 0:
             return {"error": "No clear satellite images found."}
@@ -44,4 +45,8 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
         lst_img = landsat_col.median()
         s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(region).filterDate('2024-01-01', '2024-05-30').filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30)).median()
 
+        # maths formulas for converting satellite bands into data
 
+        ndvi_raw = s2.normalizedDifference(['B8', 'B4']).rename('ndvi')
+        ndbi_raw = s2.normalizedDifference(['B11', 'B8']).rename('ndbi')
+        lst_raw = lst_img.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15).rename('lst')
