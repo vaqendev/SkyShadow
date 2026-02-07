@@ -2,6 +2,7 @@ import ee
 import os
 import json
 import requests
+import math
 from google.oauth2.service_account import Credentials
 
 # --- AUTHENTICATION ---
@@ -41,8 +42,17 @@ def get_live_weather(lat, lon):
 def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_count: int = 5):
     try:
         # A. GEOMETRY GUARD
-        region = ee.Geometry(geojson).simplify(maxError=100).buffer(distance=0, maxError=1)
+        region = ee.Geometry(geojson).simplify(maxError=10).buffer(distance=0, maxError=1)
         center = region.centroid().coordinates().getInfo()
+
+        region_area = region.area(maxError=1000).getInfo()
+        # 2. Derive a "Characteristic Length" (side of the square equivalent)
+        side_length = math.sqrt(region_area)
+        # 3. Set box size to roughly 5% of the region's width (1/20th)
+        # This ensures boxes grow/shrink with your drawing.
+        dynamic_radius = side_length * 0.05
+        # 4. Clamp results to keep them sane (Min 30m radius, Max 2000m radius)
+        dynamic_radius = max(30, min(dynamic_radius, 2000))
 
         # B. DATA FETCH
         l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2")
@@ -87,7 +97,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
             # This ensures we find hotspots even in small manual drawings.
             samples = priority_score.sample(
                 region=region,
-                scale=100,       # <--- WAS 200, NOW 70
+                scale=70,       # <--- WAS 200, NOW 70
                 numPixels=500,  
                 geometries=True 
             )
@@ -100,7 +110,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
             # We mechanically turn the center-point into a 500m x 500m square
             def point_to_box(feature):
                 # Buffer 250m radius -> Square Bounds -> 500m Box
-                return feature.buffer(250).bounds()
+                return feature.buffer(dynamic_radius).bounds()
 
             top_boxes = top_samples.map(point_to_box)
             
@@ -113,7 +123,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
 
         # F. STATISTICS
         stats = simulated_lst.addBands(ndvi_raw).addBands(ndbi_raw).reduceRegion(
-            reducer=ee.Reducer.mean(), geometry=region, scale=100, bestEffort=True, maxPixels=1e9
+            reducer=ee.Reducer.mean(), geometry=region, scale=70, bestEffort=True, maxPixels=1e9
         ).getInfo()
 
         return {
