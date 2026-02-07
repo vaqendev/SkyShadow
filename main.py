@@ -30,7 +30,6 @@ async def analyze_region(request: AnalysisRequest):
         request.hotspot_count
     )
     
-    # Graceful Error Handling (Prevents 500 Crash)
     if "error" in result:
         return {
             "status": "error", 
@@ -38,7 +37,7 @@ async def analyze_region(request: AnalysisRequest):
         }
     return result
 
-@app.post("/simulate_growth")
+@app.post("/simulate_growth") #(Future Scope)
 async def simulate_growth(request: GrowthRequest):
     result = await run_in_threadpool(
         engine.generate_tree_locations, 

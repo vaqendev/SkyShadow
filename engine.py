@@ -2,6 +2,7 @@ import ee
 import os
 import json
 import requests
+import math
 from google.oauth2.service_account import Credentials
 
 # --- AUTHENTICATION ---
@@ -41,8 +42,14 @@ def get_live_weather(lat, lon):
 def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_count: int = 5):
     try:
         # A. GEOMETRY GUARD
-        region = ee.Geometry(geojson).simplify(maxError=100).buffer(distance=0, maxError=1)
+        region = ee.Geometry(geojson).simplify(maxError=80).buffer(distance=0, maxError=1)
         center = region.centroid().coordinates().getInfo()
+        
+        # DYNAMIC SIZING LOGIC 
+        region_area = region.area(maxError=1000).getInfo()
+        side_length = math.sqrt(region_area)
+        dynamic_radius = side_length * 0.05
+        dynamic_radius = max(30, min(dynamic_radius, 2000))
 
         # B. DATA FETCH
         l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2")
@@ -69,7 +76,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
         vis_params = {'min': 30, 'max': 45, 'palette': ['00FF00', 'FFFF00', 'FF7F00', 'FF0000'], 'opacity': 0.6}
         map_url = visual_image.getMapId(vis_params)['tile_fetcher'].url_format
 
-        # E. HOTSPOTS (THE "SAMPLER" METHOD - Guaranteed Speed)
+        # E. HOTSPOTS 
         hotspots_geojson = []
         try:
             # 1. Normalize
@@ -83,24 +90,19 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
             priority_score = lst_norm.subtract(ndvi_raw).rename('score')
 
             # 3. SAMPLE POINTS (The Fix)
-            # Instead of heavy vectorization, just grab 500 candidate pixels
-            # This ensures we find hotspots even in small manual drawings.
             samples = priority_score.sample(
                 region=region,
-                scale=100,       # <--- WAS 200, NOW 70
+                scale=30,       
                 numPixels=500,  
                 geometries=True 
             )
 
             # 4. FILTER & SORT
-            # Sort by score descending (Worst first) and take Top 5
             top_samples = samples.sort('score', False).limit(hotspot_count)
 
             # 5. CONVERT POINTS TO BOXES
-            # We mechanically turn the center-point into a 500m x 500m square
             def point_to_box(feature):
-                # Buffer 250m radius -> Square Bounds -> 500m Box
-                return feature.buffer(250).bounds()
+                return feature.buffer(dynamic_radius).bounds()
 
             top_boxes = top_samples.map(point_to_box)
             
@@ -113,7 +115,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
 
         # F. STATISTICS
         stats = simulated_lst.addBands(ndvi_raw).addBands(ndbi_raw).reduceRegion(
-            reducer=ee.Reducer.mean(), geometry=region, scale=100, bestEffort=True, maxPixels=1e9
+            reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=1e9
         ).getInfo()
 
         return {
@@ -133,5 +135,5 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0, hotspot_cou
         return {"error": str(e)}
     
 def generate_tree_locations(geojson: dict, temp_drop: float = 0.0):
-    # Placeholder for growth simulation
+    # Placeholder for growth simulation (Future Implementation)
     return {"status": "success", "message": "Growth simulation placeholder"}
