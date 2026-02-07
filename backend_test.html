@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SkyShadow Planner 🌳</title>
+    <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+    <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { margin: 0; background: #000; font-family: 'Rajdhani', sans-serif; color: #0ff; overflow: hidden; }
+        #map { width: 100vw; height: 100vh; }
+        
+        #ui { 
+            position: absolute; top: 20px; left: 20px; 
+            background: rgba(5, 10, 15, 0.95); 
+            padding: 20px; 
+            border: 1px solid #00ffff; 
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.15);
+            z-index: 10; 
+            width: 320px; 
+            border-radius: 4px; 
+            backdrop-filter: blur(8px);
+        }
+        
+        .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
+        h2 { margin: 0; color: #fff; font-size: 22px; letter-spacing: 2px; text-shadow: 0 0 10px #0ff; }
+        .subtitle { font-size: 9px; color: #0ff; letter-spacing: 2px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase; }
+
+        .live-box { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; text-align: center; }
+        .live-temp { font-size: 42px; color: #fff; font-weight: 700; text-shadow: 0 0 15px rgba(0,255,255,0.3); }
+        .label-sm { font-size: 9px; color: #666; letter-spacing: 1px; margin-top: -5px; display: block;}
+
+        button { 
+            background: rgba(0, 40, 60, 0.6); color: #0ff; border: 1px solid #0ff; 
+            padding: 12px; width: 100%; cursor: pointer; font-weight: 700; 
+            font-size: 13px; text-transform: uppercase; transition: 0.2s; letter-spacing: 1px;
+            font-family: 'Rajdhani', sans-serif; margin-bottom: 10px;
+        }
+        button:hover { background: #0ff; color: #000; box-shadow: 0 0 20px #0ff; }
+        
+        /* SLIDERS */
+        input[type=range] { width: 100%; margin: 10px 0; accent-color: #0ff; background: #222; height: 4px; cursor: pointer; }
+        
+        /* HOTSPOT CONTROLS */
+        .hotspot-panel {
+            background: rgba(255, 0, 0, 0.05); border: 1px dashed #ff3333;
+            padding: 10px; margin-bottom: 15px; border-radius: 4px;
+        }
+        .toggle-btn { background: #111; border-color: #555; color: #555; }
+        .toggle-btn.active { background: #ff3333; border-color: #ff3333; color: #fff; box-shadow: 0 0 15px #ff0000; }
+        
+        .search-box { position: relative; margin-bottom: 15px; }
+        .search-input {
+            width: 93%; background: #000; border: 1px solid #333; color: #0ff;
+            padding: 8px 10px; font-family: 'Rajdhani'; font-size: 14px; outline: none;
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .suggestions {
+            position: absolute; top: 35px; left: 0; width: 100%; background: #050a0f;
+            border: 1px solid #333; z-index: 20; display: none;
+        }
+        .suggestion-item { padding: 8px; cursor: pointer; font-size: 12px; color: #aaa; border-bottom: 1px solid #222; }
+        .suggestion-item:hover { background: #002233; color: #fff; }
+
+        #mission-overlay {
+            position: absolute; top: 180px; left: 360px;
+            background: rgba(0, 0, 0, 0.9); border: 2px solid #fff;
+            padding: 20px; width: 250px; z-index: 100; display: none;
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="header-row">
+            <div><h2>Skyshadow</h2><div class="subtitle">Predictive Digital Twin</div></div>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="city-search" class="search-input" placeholder=">> LOCATE TARGET CITY..." oninput="handleSearch(this.value)">
+            <div id="suggestions" class="suggestions"></div>
+        </div>
+        
+        <div class="live-box">
+            <div id="live-temp-display" class="live-temp">--°C</div>
+            <span class="label-sm">CURRENT LIVE WEATHER</span>
+        </div>
+
+        <div class="hotspot-panel">
+            <button id="hotspot-toggle" class="toggle-btn" onclick="toggleHotspots()">🎯 HOTSPOTS: OFF</button>
+            
+            <div id="hotspot-slider-container" style="display:none; margin-top:5px;">
+                <div style="display:flex; justify-content:space-between; font-size:10px; color:#ff8888; margin-bottom:2px;">
+                    <span>SENSITIVITY (BOX COUNT)</span>
+                    <span id="hotspot-count-val">TOP 5</span>
+                </div>
+                <input type="range" id="hotspot-slider" min="1" max="10" step="1" value="5" oninput="updateHotspotCount()">
+            </div>
+        </div>
+        <button onclick="startDraw()" id="draw-btn">⚡ DEFINE TARGET ZONE</button>
+        
+        <div id="sim-controls" style="display:none;">
+            <div style="margin-top:20px; display:flex; justify-content:space-between; align-items:center;">
+                <span class="m-label" style="color:#0f0">VEGETATION INJECTION</span>
+                <span id="slider-val" style="color:#0f0; font-weight:bold">+0%</span>
+            </div>
+            
+            <input type="range" id="tree-slider" min="0" max="0.30" step="0.05" value="0" oninput="updatePredictiveHUD()" onchange="runAnalysis()">
+            
+            <div style="margin-top:15px; color:#aaa; font-size:10px;">
+                STATUS: <span id="status">SYSTEM READY</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="mission-overlay">
+        <div class="mission-title" style="color:white; font-weight:bold; border-bottom:1px solid #555; margin-bottom:10px; padding-bottom:5px;">TARGET ACQUIRED</div>
+        <button onclick="executeMission(1)" style="border:1px solid #555; background:transparent; color:#aaa; margin-bottom:5px;">1. FULL SECTOR</button>
+        <button onclick="executeMission(2)" style="border:1px solid #0ff; background:rgba(0,255,255,0.1); color:#0ff;">2. MANUAL DRAW</button>
+    </div>
+    
+    <div id="map"></div>
+
+    <script>
+        const {DeckGL, PolygonLayer, TileLayer, BitmapLayer, GeoJsonLayer, FlyToInterpolator} = deck;
+        const BACKEND_URL = "http://127.0.0.1:8000"; 
+
+        // STATE
+        let deckgl;
+        let drawing = false;
+        let points = []; 
+        let lastGeojson = null;
+        let cityGeojson = null; 
+        
+        // HOTSPOT STATE
+        let allHotspots = null; // Stores the raw Top 10 from backend
+        let showHotspots = false; // Toggle State
+        let hotspotCount = 5; // Slider State
+
+        // VIEW STATE
+        let viewState = { longitude: 77.20, latitude: 28.61, zoom: 12, pitch: 0, bearing: 0 };
+
+        deckgl = new DeckGL({
+            container: 'map',
+            mapStyle: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+            viewState: viewState,
+            controller: {doubleClickZoom: false},
+            onViewStateChange: ({viewState: vs}) => {
+                viewState = vs;
+                deckgl.setProps({viewState: vs});
+            },
+            onClick: handleMapClick,
+            layers: []
+        });
+
+        // --- HOTSPOT LOGIC ---
+        function toggleHotspots() {
+            showHotspots = !showHotspots;
+            const btn = document.getElementById('hotspot-toggle');
+            const slider = document.getElementById('hotspot-slider-container');
+            
+            if (showHotspots) {
+                btn.classList.add('active');
+                btn.innerText = "🎯 HOTSPOTS: ACTIVE";
+                slider.style.display = 'block';
+            } else {
+                btn.classList.remove('active');
+                btn.innerText = "🎯 HOTSPOTS: OFF";
+                slider.style.display = 'none';
+            }
+            updateLayers();
+        }
+
+        function updateHotspotCount() {
+            hotspotCount = parseInt(document.getElementById('hotspot-slider').value);
+            document.getElementById('hotspot-count-val').innerText = `TOP ${hotspotCount}`;
+            updateLayers();
+        }
+        // --- END HOTSPOT LOGIC ---
+
+        // SEARCH & DRAWING (Simplified for brevity, same as before)
+        let debounceTimer;
+        async function handleSearch(query) {
+            clearTimeout(debounceTimer);
+            const list = document.getElementById('suggestions');
+            if(query.length < 3) { list.style.display = 'none'; return; }
+            debounceTimer = setTimeout(async () => {
+                const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&polygon_geojson=1&limit=5`;
+                try {
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    list.innerHTML = '';
+                    if(data.length > 0) {
+                        list.style.display = 'block';
+                        data.forEach(place => {
+                            if(place.geojson.type === 'Polygon' || place.geojson.type === 'MultiPolygon') {
+                                const div = document.createElement('div');
+                                div.className = 'suggestion-item';
+                                div.innerText = place.display_name.split(',')[0];
+                                div.onclick = () => selectLocation(place);
+                                list.appendChild(div);
+                            }
+                        });
+                    }
+                } catch(e) { console.error(e); }
+            }, 300);
+        }
+
+        function selectLocation(place) {
+            document.getElementById('suggestions').style.display = 'none';
+            cityGeojson = place.geojson;
+            viewState = { ...viewState, longitude: parseFloat(place.lon), latitude: parseFloat(place.lat), zoom: 11, transitionDuration: 2000, transitionInterpolator: new FlyToInterpolator() };
+            deckgl.setProps({viewState});
+            updateLayers();
+            setTimeout(() => document.getElementById('mission-overlay').style.display = 'block', 2100);
+        }
+
+        function executeMission(option) {
+            document.getElementById('mission-overlay').style.display = 'none';
+            if (option === 1) { lastGeojson = cityGeojson; runAnalysis(true); }
+            else { startDraw(); }
+        }
+
+        function startDraw() {
+            drawing = true; points = []; lastGeojson = null; window.resultUrl = null; 
+            updateLayers();
+            document.getElementById('draw-btn').innerText = "🔴 DRAWING...";
+        }
+
+        function handleMapClick(info) {
+            if (!drawing || !info.coordinate) return;
+            points.push(info.coordinate);
+            updateLayers();
+        }
+
+        document.getElementById('map').addEventListener('dblclick', () => {
+            if (drawing && points.length > 2) {
+                drawing = false;
+                lastGeojson = { "type": "Polygon", "coordinates": [[...points, points[0]]] };
+                document.getElementById('draw-btn').innerText = "⚡ DEFINE TARGET ZONE";
+                runAnalysis(true); 
+            }
+        });
+
+        // --- LAYER MANAGER (UPDATED) ---
+        function updateLayers() {
+            const layers = [];
+            
+            // 1. HEATMAP
+            if (window.resultUrl) {
+                layers.push(new TileLayer({
+                    id: 'heatmap-' + Date.now(),
+                    data: window.resultUrl,
+                    minZoom: 0, maxZoom: 19, tileSize: 256, opacity: 0.6, 
+                    renderSubLayers: props => {
+                        const {bbox: {west, south, east, north}} = props.tile;
+                        return new BitmapLayer(props, { data: null, image: props.data, bounds: [west, south, east, north] });
+                    }
+                }));
+            }
+
+            // 2. DYNAMIC HOTSPOTS
+            // Only show if Toggle is ON (showHotspots) AND we have data
+            if (showHotspots && allHotspots && allHotspots.features) {
+                
+                // CLIENT-SIDE FILTERING
+                // Slice the top 10 list based on the slider value (hotspotCount)
+                const visibleFeatures = allHotspots.features.slice(0, hotspotCount);
+                
+                const filteredGeojson = {
+                    type: "FeatureCollection",
+                    features: visibleFeatures
+                };
+
+                layers.push(new GeoJsonLayer({
+                    id: 'critical-zones',
+                    data: filteredGeojson,
+                    filled: true, stroked: true,
+                    getFillColor: [255, 0, 0, 40], // Translucent Red
+                    getLineColor: [255, 255, 255, 255], // White Border
+                    getLineWidth: 20, lineWidthMinPixels: 2,
+                    pickable: true, autoHighlight: true
+                }));
+            }
+
+            // 3. BOUNDARIES
+            if (cityGeojson) {
+                layers.push(new GeoJsonLayer({
+                    id: 'city-border', data: cityGeojson, filled: false, stroked: true,
+                    getLineColor: [255, 255, 255, 50], getLineWidth: 50
+                }));
+            }
+            if (points.length > 0) {
+                layers.push(new PolygonLayer({
+                    id: 'poly', data: [{ polygon: points }], getPolygon: d => d.polygon,
+                    getFillColor: [0, 0, 0, 0], getLineColor: [0, 255, 255, 255], getLineWidth: 2
+                }));
+            }
+            
+            deckgl.setProps({ layers });
+        }
+
+        async function runAnalysis(isInitial = false) {
+            if (!lastGeojson) return;
+            document.getElementById('status').innerText = "🛰️ COMPUTING...";
+            const treeVal = parseFloat(document.getElementById('tree-slider').value);
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/analyze`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ geojson: lastGeojson, tree_increase: treeVal })
+                });
+                const data = await res.json();
+
+                if (data.map_url) {
+                    window.resultUrl = data.map_url;
+                    
+                    // 🟢 FIX IS HERE: Directly assign the FeatureCollection
+                    allHotspots = data.hotspots; 
+                    
+                    if(data.live_temp && data.live_temp !== "N/A") {
+                        document.getElementById('live-temp-display').innerText = `${data.live_temp}°C`;
+                    }
+                    
+                    document.getElementById('sim-controls').style.display = 'block';
+                    document.getElementById('status').innerText = "✅ DATA SYNCHRONIZED";
+                    
+                    // Refresh map to show red boxes immediately if toggle is ON
+                    updateLayers();
+                }
+            } catch (e) { 
+                console.error(e); 
+                document.getElementById('status').innerText = "❌ ERROR";
+            }
+        }
+        
+        function updatePredictiveHUD() {
+            const val = document.getElementById('tree-slider').value;
+            document.getElementById('slider-val').innerText = `+${Math.round(val*100)}%`;
+        }
+    </script>
+</body>
+</html>
