@@ -6,82 +6,353 @@
     <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
     <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+    
     <style>
-        body { margin: 0; background: #000; font-family: 'Courier New', monospace; color: #0ff; }
+        body { margin: 0; background: #000; font-family: 'Rajdhani', sans-serif; color: #0ff; overflow: hidden; }
         #map { width: 100vw; height: 100vh; }
-        #ui { position: absolute; top: 20px; left: 20px; background: rgba(0, 10, 20, 0.9); padding: 20px; border: 1px solid #0ff; z-index: 10; width: 340px; border-radius: 8px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.15);}
         
-        h2 { margin-top: 0; color: #fff; font-size: 18px; text-shadow: 0 0 10px #0ff; }
+        /* --- UI CONTAINER --- */
+        #ui { 
+            position: absolute; top: 20px; left: 20px; 
+            background: rgba(5, 10, 15, 0.95); 
+            padding: 20px; 
+            border: 1px solid #00ffff; 
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.15);
+            z-index: 10; 
+            width: 320px; 
+            border-radius: 4px; 
+            backdrop-filter: blur(8px);
+            transform-origin: top left;
+            transition: height 0.3s;
+        }
         
-        button { background: #002233; color: #0ff; border: 1px solid #0ff; padding: 12px; width: 100%; cursor: pointer; font-weight: bold; margin-top: 10px; font-size: 14px; text-transform: uppercase; transition: 0.2s; }
-        button:hover { background: #0ff; color: #000; box-shadow: 0 0 15px #0ff; }
+        /* HEADER */
+        .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
+        h2 { margin: 0; color: #fff; font-size: 22px; letter-spacing: 2px; text-shadow: 0 0 10px #0ff; }
+        .subtitle { font-size: 9px; color: #0ff; letter-spacing: 2px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase; }
+
+        /* LIVE TEMP */
+        .live-box { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; text-align: center; }
+        .live-temp { font-size: 42px; color: #fff; font-weight: 700; text-shadow: 0 0 15px rgba(0,255,255,0.3); }
+        .label-sm { font-size: 9px; color: #666; letter-spacing: 1px; margin-top: -5px; display: block;}
+
+        /* BUTTONS */
+        button { 
+            background: rgba(0, 40, 60, 0.6); color: #0ff; border: 1px solid #0ff; 
+            padding: 12px; width: 100%; cursor: pointer; font-weight: 700; 
+            font-size: 13px; text-transform: uppercase; transition: 0.2s; letter-spacing: 1px;
+            font-family: 'Rajdhani', sans-serif; margin-bottom: 10px;
+        }
+        button:hover { background: #0ff; color: #000; box-shadow: 0 0 20px #0ff; }
         
-        /* Cyber Slider */
-        input[type=range] { width: 100%; margin: 15px 0; accent-color: #0ff; background: #333; height: 4px; border-radius: 2px; }
-        .slider-label { display: flex; justify-content: space-between; font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        /* SLIDER & METRICS */
+        input[type=range] { width: 100%; margin: 15px 0 5px 0; accent-color: #0ff; background: #222; height: 4px; cursor: pointer; }
+        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; border-top: 1px dashed #333; padding-top: 15px; }
+        .metric-item { display: flex; flex-direction: column; }
+        .m-label { font-size: 10px; color: #aaa; text-transform: uppercase; }
+        .m-val { font-size: 20px; font-weight: bold; color: #fff; }
         
-        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; font-size: 14px; border-top: 1px dashed #333; padding-top: 15px; }
-        .live-temp { font-size: 32px; color: #fff; text-align: center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 15px; font-weight: bold; }
-        .value { text-align: right; color: #fff; font-weight: bold; }
+        /* NDVI BAR */
+        .ndvi-bar-bg { width: 100%; height: 6px; background: #222; margin-top: 5px; border-radius: 3px; position: relative; }
+        .ndvi-fill { height: 100%; background: #0f0; width: 0%; transition: width 0.3s; box-shadow: 0 0 10px #0f0; }
+
+        /* --- NEW FEATURE: SEARCH BAR --- */
+        .search-box { position: relative; margin-bottom: 15px; }
+        .search-input {
+            width: 93%; background: #000; border: 1px solid #333; color: #0ff;
+            padding: 8px 10px; font-family: 'Rajdhani'; font-size: 14px; outline: none;
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .search-input:focus { border-color: #0ff; box-shadow: 0 0 10px rgba(0,255,255,0.2); }
+        .suggestions {
+            position: absolute; top: 35px; left: 0; width: 100%; background: #050a0f;
+            border: 1px solid #333; z-index: 20; display: none;
+        }
+        .suggestion-item {
+            padding: 8px; cursor: pointer; font-size: 12px; color: #aaa; border-bottom: 1px solid #222;
+        }
+        .suggestion-item:hover { background: #002233; color: #fff; }
+
+        /* --- NEW FEATURE: MISSION CHOICE OVERLAY --- */
+        #mission-overlay {
+            position: absolute; top: 180px; left: 360px; /* Offset from main UI */
+            background: rgba(0, 0, 0, 0.9); border: 2px solid #fff;
+            padding: 20px; width: 250px; z-index: 100; display: none;
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.2);
+        }
+        .mission-title { color: #fff; font-size: 16px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #555; padding-bottom: 5px; }
+        .mission-btn {
+            display: block; width: 100%; margin: 8px 0; padding: 10px;
+            text-align: left; background: transparent; border: 1px solid #555;
+            color: #888; font-size: 11px;
+        }
+        .mission-btn:hover { border-color: #fff; color: #fff; background: rgba(255,255,255,0.1); }
+        
+        /* --- SCANNER ANIMATION --- */
+        #scanner {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 255, 255, 0.05); pointer-events: none; z-index: 5;
+            display: none;
+        }
+        .scan-line {
+            width: 100%; height: 5px; background: rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 20px #0ff; position: absolute; top: 0;
+            animation: scan 2s linear infinite;
+        }
+        @keyframes scan { 0% { top: 0%; opacity: 0; } 50% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+
     </style>
 </head>
 <body>
-    <div id="ui">
-        <h2>🛰️ SKYSHADOW</h2>
-        
-        <div id="live-weather" class="live-temp">--°C <span style="font-size:12px; color:#0ff; display:block; margin-top:5px; font-weight:normal">LIVE FEED</span></div>
 
-        <button onclick="startDraw()" id="draw-btn">✏️ NEW ANALYSIS</button>
-        
-        <div id="sim-controls" style="display:none; margin-top:20px;">
-            <label style="font-size:12px; color:#0ff; letter-spacing:1px;">🌱 VEGETATION INJECTION</label>
-            <input type="range" id="tree-slider" min="0" max="0.3" step="0.05" value="0" onchange="runAnalysis()">
-            <div class="slider-label">
-                <span>Current</span>
-                <span id="slider-val" style="color:#fff">0%</span>
-                <span>Max Capacity</span>
+    <div id="scanner"><div class="scan-line"></div></div>
+
+    <div id="ui">
+        <div class="header-row">
+            <div>
+                <h2>Skyshadow</h2>
+                <div class="subtitle">Predictive Digital Twin</div>
             </div>
         </div>
 
-        <div id="stats" class="stat-grid">
-            <div style="grid-column: 1 / -1; text-align: center; color: #555; font-size: 12px;">Waiting for input...</div>
+        <div class="search-box">
+            <input type="text" id="city-search" class="search-input" placeholder=">> LOCATE TARGET CITY..." oninput="handleSearch(this.value)">
+            <div id="suggestions" class="suggestions"></div>
         </div>
+        
+        <div class="live-box">
+            <div id="live-temp-display" class="live-temp">--°C</div>
+            <span class="label-sm">CURRENT LIVE WEATHER</span>
+        </div>
+
+        <button onclick="startDraw()" id="draw-btn">⚡ DEFINE TARGET ZONE</button>
+        
+        <div id="sim-controls" style="display:none;">
+            <div style="margin-top:20px; display:flex; justify-content:space-between; align-items:center;">
+                <span class="m-label" style="color:#0f0">VEGETATION INJECTION</span>
+                <span id="slider-val" style="color:#0f0; font-weight:bold">+0%</span>
+            </div>
+            
+            <input type="range" id="tree-slider" min="0" max="0.30" step="0.05" value="0" oninput="updatePredictiveHUD()" onchange="runAnalysis()">
+            
+            <div style="display:flex; justify-content:space-between; font-size:9px; color:#555;">
+                <span>CURRENT</span>
+                <span id="max-cap-text">MAX CAPACITY</span>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-item">
+                    <span class="m-label">PREDICTED TEMP</span>
+                    <span class="m-val" id="pred-temp">--</span>
+                    <span class="label-sm" style="color:#666">SATELLITE BASELINE</span>
+                </div>
+                <div class="metric-item" style="text-align:right;">
+                    <span class="m-label">COOLING</span>
+                    <span class="m-val" id="pred-cool" style="color:#0ff">0.0°C</span>
+                    <span class="label-sm" id="context-status">ANALYZING...</span>
+                </div>
+            </div>
+
+            <div style="margin-top:15px;">
+                <div style="display:flex; justify-content:space-between; font-size:10px; color:#aaa; margin-bottom:2px;">
+                    <span>GREEN COVER CHANGE</span>
+                    <span id="ndvi-text">0.0 -> 0.0</span>
+                </div>
+                <div class="ndvi-bar-bg">
+                    <div id="ndvi-bar" class="ndvi-fill"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="status" style="margin-top:15px; text-align:center; font-size:9px; color:#444;">SYSTEM READY</div>
     </div>
+
+    <div id="mission-overlay">
+        <div class="mission-title">TARGET ACQUIRED</div>
+        <div style="font-size:10px; color:#aaa; margin-bottom:10px;">SECTOR BOUNDARIES LOCKED. AWAITING PROTOCOL.</div>
+        
+        <button class="mission-btn" onclick="executeMission(1)">
+            <strong style="color:#fff">1. ANALYSE FULL SECTOR</strong><br>
+            Processing entire city geometry. High compute load.
+        </button>
+        
+        <button class="mission-btn" onclick="executeMission(2)">
+            <strong style="color:#0ff">2. MANUAL SUB-REGION</strong><br>
+            Draw specific ROI within boundaries.
+        </button>
+    </div>
+    
     <div id="map"></div>
 
     <script>
-        const {DeckGL, TileLayer, BitmapLayer, PolygonLayer} = deck;
-        const BACKEND_URL = "https://terrainbyte-production.up.railway.app"; 
+        const {DeckGL, PolygonLayer, TileLayer, BitmapLayer, GeoJsonLayer, FlyToInterpolator} = deck;
+       // FORCE LOCALHOST (Since we are running locally)
+const BACKEND_URL = "http://127.0.0.1:8000"; 
 
+        // STATE
         let deckgl;
         let drawing = false;
-        let points = [];
+        let points = []; 
         let lastGeojson = null;
+        let cityGeojson = null; // Store searched city
+        let baselineTemp = 0;
+        let baselineNDVI = 0;
+        
+        // VIEW STATE (Controlled for Animation)
+        let viewState = {
+            longitude: 77.20, latitude: 28.61, zoom: 12, pitch: 0, bearing: 0
+        };
 
+        // INIT MAP
         deckgl = new DeckGL({
             container: 'map',
             mapStyle: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-            initialViewState: { longitude: 77.20, latitude: 28.61, zoom: 12 },
+            viewState: viewState,
             controller: {doubleClickZoom: false},
+            onViewStateChange: ({viewState: vs}) => {
+                viewState = vs;
+                deckgl.setProps({viewState: vs});
+            },
             onClick: handleMapClick,
             layers: []
         });
 
+        // --- NEW: SEARCH FUNCTIONALITY ---
+        let debounceTimer;
+        
+        // --- IN backend_test.html ---
+
+// REVISED handleSearch function
+
+async function handleSearch(query) {
+    clearTimeout(debounceTimer);
+    const list = document.getElementById('suggestions');
+    if(query.length < 3) { list.style.display = 'none'; return; }
+    
+    debounceTimer = setTimeout(async () => {
+        // limit=10 gives us a buffer to filter out bad results
+        const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&polygon_geojson=1&limit=10&addressdetails=1`;
+        
+        try {
+            const res = await fetch(url);
+            const rawData = await res.json();
+            
+            // 1. Filter: Must be a Polygon/MultiPolygon (No points/dots)
+            let filtered = rawData.filter(place => 
+                place.geojson && 
+                (place.geojson.type === 'Polygon' || place.geojson.type === 'MultiPolygon')
+            );
+
+            // 2. Deduplication & Context Logic
+            const uniqueResults = [];
+            const seenNames = new Set();
+
+            filtered.forEach(place => {
+                // Create a "fingerprint" for the name to check duplicates
+                // e.g. "Mumbai, Maharashtra, India"
+                const nameKey = place.display_name.split(',').slice(0, 2).join(',').trim();
+                
+                if (!seenNames.has(nameKey)) {
+                    seenNames.add(nameKey);
+                    uniqueResults.push(place);
+                }
+            });
+
+            // 3. Render Top 5 Unique Results
+            list.innerHTML = '';
+            if(uniqueResults.length > 0) {
+                list.style.display = 'block';
+                
+                uniqueResults.slice(0, 5).forEach(place => {
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item';
+                    
+                    // Format the name: "Mumbai, Maharashtra"
+                    const mainName = place.display_name.split(',')[0];
+                    const subText = place.display_name.split(',').slice(1,3).join(',');
+                    
+                    // Add a tag like [CITY] or [ADMIN] based on the type
+                    const typeTag = place.addresstype ? `[${place.addresstype.toUpperCase()}]` : '[REGION]';
+
+                    // HTML for the suggestion
+                    div.innerHTML = `
+                        <span style="color:#0ff; font-weight:bold;">${mainName}</span> 
+                        <span style="font-size:9px; color:#666; margin-left:5px;">${typeTag}</span><br>
+                        <span style="font-size:10px; color:#888;">${subText}</span>
+                    `;
+                    
+                    div.onclick = () => selectLocation(place);
+                    list.appendChild(div);
+                });
+            } else {
+                list.style.display = 'none';
+            }
+        } catch(e) { console.error("Search error", e); }
+    }, 300);
+}
+
+        function selectLocation(place) {
+            // 1. Hide search UI
+            document.getElementById('suggestions').style.display = 'none';
+            document.getElementById('city-search').value = "";
+            
+            // 2. Trigger "Cool Animation"
+            document.getElementById('scanner').style.display = 'block';
+            setTimeout(() => document.getElementById('scanner').style.display = 'none', 2500);
+
+            // 3. Move Camera
+            const lat = parseFloat(place.lat);
+            const lon = parseFloat(place.lon);
+            
+            viewState = {
+                ...viewState,
+                longitude: lon, latitude: lat, zoom: 11,
+                transitionDuration: 2000,
+                transitionInterpolator: new FlyToInterpolator()
+            };
+            deckgl.setProps({viewState});
+
+            // 4. Set City Boundary
+            if (place.geojson) {
+                cityGeojson = place.geojson;
+                updateLayers();
+                
+                // 5. Show Mission Choice after animation
+                setTimeout(() => {
+                    document.getElementById('mission-overlay').style.display = 'block';
+                }, 2100);
+            }
+        }
+
+        function executeMission(option) {
+            document.getElementById('mission-overlay').style.display = 'none';
+            
+            if (option === 1) {
+                // OPTION 1: ANALYSE WHOLE CITY
+                if (!cityGeojson) return;
+                lastGeojson = cityGeojson; // Set the active geometry to the city
+                runAnalysis(true); // Run backend
+            } else {
+                // OPTION 2: MANUAL BOUNDING
+                // Keep the white boundary as visual reference, but let user draw new one
+                startDraw();
+            }
+        }
+
+        // --- DRAWING LOGIC (Unchanged) ---
         function startDraw() {
-            // 1. RESET EVERYTHING
             drawing = true;
             points = [];
             lastGeojson = null;
-            window.resultUrl = null; // <--- This wipes the old heatmap
+            window.resultUrl = null; 
+            updateLayers(); // Will keep city boundary if exists
             
-            // 2. UI Updates
-            updateLayers(); // Forces the map to clear
-            document.getElementById('draw-btn').innerText = "🔴 RECORDING POINTS...";
-            document.getElementById('draw-btn').style.background = "#330000";
-            document.getElementById('draw-btn').style.borderColor = "#ff0000";
-            document.getElementById('draw-btn').style.color = "#ff0000";
+            const btn = document.getElementById('draw-btn');
+            btn.innerText = "🔴 DRAWING...";
+            btn.style.borderColor = "red";
+            btn.style.color = "red";
             document.getElementById('sim-controls').style.display = 'none';
-            document.getElementById('stats').innerHTML = "<div style='grid-column:1/-1; color:#0ff'>1. Click points to outline area<br>2. Double-click to finish</div>";
         }
 
         function handleMapClick(info) {
@@ -96,29 +367,26 @@
                 const closedRing = [...points, points[0]];
                 lastGeojson = { "type": "Polygon", "coordinates": [closedRing] };
                 
-                document.getElementById('draw-btn').innerText = "✏️ NEW ANALYSIS";
-                document.getElementById('draw-btn').style.background = "#002233";
+                document.getElementById('draw-btn').innerText = "⚡ DEFINE NEW REGION";
                 document.getElementById('draw-btn').style.borderColor = "#0ff";
                 document.getElementById('draw-btn').style.color = "#0ff";
-                document.getElementById('sim-controls').style.display = 'block';
                 
-                // Reset slider
                 document.getElementById('tree-slider').value = 0;
-                document.getElementById('slider-val').innerText = "0%";
-                runAnalysis();
+                runAnalysis(true); 
             }
         });
 
+        // LAYER MANAGER (Updated for City Boundary)
         function updateLayers() {
             const layers = [];
             
-            // Layer 1: The Heatmap (Only if URL exists)
+            // A. ANALYSIS HEATMAP
             if (window.resultUrl) {
                 layers.push(new TileLayer({
-                    id: 'analysis-result-' + Date.now(), // Force refresh
+                    id: 'heatmap-' + Date.now(),
                     data: window.resultUrl,
                     minZoom: 0, maxZoom: 19, tileSize: 256,
-                    opacity: 0.65,
+                    opacity: 0.6, 
                     renderSubLayers: props => {
                         const {bbox: {west, south, east, north}} = props.tile;
                         return new BitmapLayer(props, {
@@ -128,61 +396,110 @@
                 }));
             }
 
-            // Layer 2: The Drawing Line (Green Cyber Line)
-            if (points.length > 0) {
-                layers.push(new PolygonLayer({
-                    id: 'drawing-poly',
-                    data: [{ polygon: points }],
-                    getPolygon: d => d.polygon,
-                    getFillColor: [0, 255, 255, 30], // Slight cyan tint
-                    getLineColor: [0, 255, 255, 255], // Cyan Line
-                    getLineWidth: 3,
+            // B. CITY BOUNDARY (The "White Bold Ambient" Layer)
+            if (cityGeojson) {
+                // 1. Glow effect (Thick, transparent)
+                layers.push(new GeoJsonLayer({
+                    id: 'city-glow',
+                    data: cityGeojson,
+                    filled: false,
+                    stroked: true,
+                    getLineColor: [255, 255, 255, 50], // White transparent
+                    getLineWidth: 80, // Very thick in meters
+                    lineWidthMinPixels: 6
+                }));
+                // 2. Core line (Thin, solid)
+                layers.push(new GeoJsonLayer({
+                    id: 'city-core',
+                    data: cityGeojson,
+                    filled: false,
+                    stroked: true,
+                    getLineColor: [255, 255, 255, 255], // Solid White
+                    getLineWidth: 20, 
                     lineWidthMinPixels: 2
                 }));
             }
+
+            // C. USER DRAWING
+            if (points.length > 0) {
+                layers.push(new PolygonLayer({
+                    id: 'poly',
+                    data: [{ polygon: points }],
+                    getPolygon: d => d.polygon,
+                    getFillColor: [0, 0, 0, 0], 
+                    getLineColor: [0, 255, 255, 255], 
+                    getLineWidth: 2, lineWidthMinPixels: 2
+                }));
+            }
+            
             deckgl.setProps({ layers });
         }
 
-        async function runAnalysis() {
+        // --- BACKEND LOGIC (Unchanged) ---
+        function updatePredictiveHUD() {
+            const addedVeg = parseFloat(document.getElementById('tree-slider').value);
+            document.getElementById('slider-val').innerText = `+${Math.round(addedVeg * 100)}%`;
+            const predictedCooling = (addedVeg * 12.0);
+            const newTemp = baselineTemp - predictedCooling;
+            document.getElementById('pred-temp').innerText = `${newTemp.toFixed(1)}°C`;
+            document.getElementById('pred-temp').style.color = newTemp > 35 ? '#ffaa00' : '#00ffaa';
+            document.getElementById('pred-cool').innerText = `-${predictedCooling.toFixed(1)}°C`;
+            const startPct = Math.min(baselineNDVI * 100, 100);
+            const addedPct = Math.min(addedVeg * 100, 100 - startPct);
+            document.getElementById('ndvi-bar').style.width = `${startPct + addedPct}%`;
+            document.getElementById('ndvi-text').innerText = `${baselineNDVI} -> ${(baselineNDVI + addedVeg).toFixed(2)}`;
+        }
+
+        async function runAnalysis(isInitial = false) {
             if (!lastGeojson) return;
-            
+            document.getElementById('status').innerText = "🛰️ COMPUTING...";
             const treeVal = parseFloat(document.getElementById('tree-slider').value);
-            document.getElementById('slider-val').innerText = `+${Math.round(treeVal*100)}%`;
-            document.getElementById('stats').innerHTML = "<div style='grid-column:1/-1; color:#ff0; text-align:center'>⚡ PROCESSING SATELLITE DATA...</div>";
 
             try {
                 const res = await fetch(`${BACKEND_URL}/analyze`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ 
-                        geojson: lastGeojson,
-                        tree_increase: treeVal 
-                    })
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ geojson: lastGeojson, tree_increase: treeVal })
                 });
                 const data = await res.json();
 
                 if (data.map_url) {
                     window.resultUrl = data.map_url;
-                    updateLayers();
-                    
-                    document.getElementById('live-weather').innerHTML = `${data.live_temp}°C <span style="font-size:12px; color:#0ff; display:block; margin-top:5px; font-weight:normal">LIVE FEED</span>`;
+                    if(data.live_temp && data.live_temp !== "N/A") {
+                        document.getElementById('live-temp-display').innerText = `${data.live_temp}°C`;
+                    }
+                    if (isInitial) {
+                        baselineTemp = data.stats.avg_temp; 
+                        baselineNDVI = data.stats.avg_ndvi;
+                        const ndbi = data.stats.avg_ndbi;
+                        const slider = document.getElementById('tree-slider');
+                        const statusLabel = document.getElementById('context-status');
 
-                    document.getElementById('stats').innerHTML = `
-                        <div style="color:#aaa">AVG TEMP</div> <div class="value" style="color:${getTempColor(data.stats.avg_temp)}">${data.stats.avg_temp}°C</div>
-                        <div style="color:#aaa">RISK LEVEL</div> <div class="value">${data.stats.risk_score}</div>
-                        <div style="color:#aaa">NDVI (VEG)</div> <div class="value" style="color:#0f0">${data.stats.avg_ndvi}</div>
-                    `;
+                        if (ndbi > 0.15) {
+                            slider.max = 0.15;
+                            document.getElementById('max-cap-text').innerText = "MAX (DENSE URBAN)";
+                            statusLabel.innerText = "DENSE URBAN AREA";
+                            statusLabel.style.color = "#ff4444";
+                        } else if (ndbi < -0.1) {
+                            slider.max = 0.50;
+                            document.getElementById('max-cap-text').innerText = "MAX (OPEN FIELD)";
+                            statusLabel.innerText = "OPEN FIELD DETECTED";
+                            statusLabel.style.color = "#0f0";
+                        } else {
+                            slider.max = 0.30;
+                            document.getElementById('max-cap-text').innerText = "MAX CAPACITY";
+                            statusLabel.innerText = "MIXED AREA";
+                            statusLabel.style.color = "#ffff00";
+                        }
+                    }
+                    document.getElementById('sim-controls').style.display = 'block';
+                    document.getElementById('status').innerText = "✅ DATA SYNCHRONIZED";
+                    updatePredictiveHUD();
+                    updateLayers();
                 }
             } catch (e) {
                 console.error(e);
-                document.getElementById('stats').innerHTML = "<div style='color:red'>Server Error</div>";
+                document.getElementById('status').innerText = "❌ ERROR";
             }
-        }
-
-        function getTempColor(t) {
-            if (t > 40) return '#ff0000'; // Red
-            if (t > 35) return '#ffaa00'; // Orange
-            return '#00ffff'; // Cyan
         }
     </script>
 </body>
