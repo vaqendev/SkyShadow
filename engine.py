@@ -27,6 +27,16 @@ else:
     except Exception as e:
         print(f" Auth Error: {e}")
 
+def get_live_weather(lat, lon):
+    try:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m"
+        res = requests.get(url, timeout=1.5).json()
+        return res['current']['temperature_2m']
+    except:
+        return "N/A"        
+
+
+
 
 def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
     try:
@@ -110,6 +120,7 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
             "status": "success",
             "map_url": map_url,
             "hotspots": hotspots_geojson, 
+            "live_temp": get_live_weather(center[1], center[0]),
             "stats": {
                 "avg_temp": round(avg_temp, 1),
                 "avg_ndvi": round(avg_ndvi, 2),
