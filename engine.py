@@ -17,51 +17,50 @@ else:
         SCOPES = ['https://www.googleapis.com/auth/earthengine']
         creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
         ee.Initialize(credentials=creds, project=PROJECT_ID)
-        print("🚀 [SUCCESS] Connected to Earth Engine (Simulation Mode)!")
+        print("🚀 [SUCCESS] Connected to Earth Engine (Smart Growth Mode)!")
     except Exception as e:
         print(f"❌ [CRITICAL] Auth Error: {e}")
 
-# --- 2. LIVE WEATHER FETCH (Current Temp) ---
+# --- 2. LIVE WEATHER FETCH ---
 def get_live_weather(lat, lon):
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m"
-        res = requests.get(url).json()
+        res = requests.get(url, timeout=2).json()
         return res['current']['temperature_2m']
     except:
         return "N/A"
 
-# --- 3. ANALYSIS ENGINE (With Simulation) ---
+# --- 3. ANALYSIS ENGINE (Context-Aware) ---
 def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
-    """
-    tree_increase: Float 0.0 to 0.5 (Represents 0% to 50% more trees)
-    """
     try:
         region = ee.Geometry(geojson)
-        center = region.centroid().coordinates().getInfo() # [Lon, Lat]
+        center = region.centroid().coordinates().getInfo()
 
-        # A. SATELLITE DATA (Summer 2024 for Peak Heat Risk)
-        l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(region).filterDate('2024-04-01', '2024-06-30').filter(ee.Filter.lt('CLOUD_COVER', 20)).median()
-        s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(region).filterDate('2024-04-01', '2024-06-30').filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)).median()
+        # A. DATA (Summer 2024)
+        l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2").filterBounds(region).filterDate('2024-04-01', '2024-06-30').filter(ee.Filter.lt('CLOUD_COVER', 25)).median()
+        s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(region).filterDate('2024-04-01', '2024-06-30').filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 25)).median()
 
         # B. BASE INDICES
         ndvi_raw = s2.normalizedDifference(['B8', 'B4']).rename('ndvi_raw')
         lst_raw = l9.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15).rename('lst_raw')
 
-        # --- C. THE SIMULATION MATH (Realistic Constraints) ---
-        # 1. Cap the increase: You can't plant trees on 100% of a city. 
-        #    If existing NDVI is low (0.1), max potential is +0.2. If it's mid (0.3), max is +0.4.
-        #    We assume 'tree_increase' is the user's *desired* effort.
+        # --- C. SMART GROWTH LOGIC (The "Concrete Ceiling") ---
+        # 1. Define the effort (User Slider)
+        effort = ee.Image(tree_increase)
+
+        # 2. Apply Constraints based on CURRENT land type
+        # If Concrete (NDVI < 0.15): Only 20% effective (Street trees)
+        # If Mixed (NDVI < 0.3): 60% effective (Gardens)
+        # If Open (NDVI >= 0.3): 100% effective (Forests)
         
-        simulated_ndvi = ndvi_raw.expression(
-            'min(NDVI + INCREASE, NDVI + 0.3, 0.7)', # Rule: Max increase +0.3, Absolute Max 0.7 (Forest)
-            {'NDVI': ndvi_raw, 'INCREASE': tree_increase}
-        ).rename('sim_ndvi')
+        real_increase = effort.where(ndvi_raw.lt(0.15), effort.multiply(0.2))\
+                              .where(ee.Filter.And([ndvi_raw.gte(0.15), ndvi_raw.lt(0.3)]), effort.multiply(0.6))
 
-        # 2. Calculate Cooling: 10% more trees (0.1 NDVI) ≈ 1.5°C cooling
-        cooling_effect = simulated_ndvi.subtract(ndvi_raw).multiply(15.0) # 0.1 delta * 15 = 1.5 deg drop
+        # 3. Calculate New NDVI (Capped at 0.7 for biology constraints)
+        simulated_ndvi = ndvi_raw.add(real_increase).min(0.7).rename('sim_ndvi')
 
-        # 3. Apply Cooling to Temperature
-        #    Also subtract 4.0°C globally to convert Surface Temp -> Air Temp
+        # 4. Cooling Math (Conservative: 12.0 slope)
+        cooling_effect = simulated_ndvi.subtract(ndvi_raw).multiply(12.0)
         final_temp = lst_raw.subtract(cooling_effect).subtract(4.0).rename('final_temp')
 
         # --- D. STATS ---
@@ -69,22 +68,27 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
             reducer=ee.Reducer.mean(), geometry=region, scale=100, bestEffort=True, maxPixels=1e9
         ).getInfo()
 
-        avg_temp = stats.get('final_temp', 0)
-        avg_ndvi = stats.get('sim_ndvi', 0)
-        
-        # --- E. LIVE WEATHER ---
-        live_temp = get_live_weather(center[1], center[0])
+        avg_temp = stats.get('final_temp') or 0.0
+        avg_ndvi = stats.get('sim_ndvi') or 0.0
 
-        # --- F. VISUALS ---
-        # We render the SIMULATED temperature.
-        # If user adds trees, the map will actually turn Green/Yellow (Cooler).
+        # --- E. VISUALS (Cyber Palette) ---
+        # Cyan (Cool/Safe) -> Green -> Yellow -> Orange -> Red (Hot/Critical)
         visual_image = final_temp.clip(region)
         vis_params = {
-            'min': 28, 'max': 45, 
-            'palette': ['00FF00', 'FFFF00', 'FF7F00', 'FF0000', '8B0000'], 
-            'opacity': 0.6
+            'min': 28, 
+            'max': 44, 
+            'palette': [
+                '00FFFF', # Cyan (Deep Cool / High Veg)
+                '00FF00', # Neon Green (Safe)
+                'FFFF00', # Yellow (Caution)
+                'FF7F00', # Orange (High Heat)
+                'FF0000', # Red (Critical)
+                '800020'  # Burgundy (Extreme)
+            ], 
+            'opacity': 0.65
         }
         map_url = visual_image.getMapId(vis_params)['tile_fetcher'].url_format
+        live_temp = get_live_weather(center[1], center[0])
 
         return {
             "map_url": map_url,
