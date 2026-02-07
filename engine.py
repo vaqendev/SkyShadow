@@ -63,10 +63,24 @@ def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
         # defining thermal hotspots 
         hotspots_geojson = []
         #try:
-
+        # defining a priority score for thermal hotspots region to rank them based on their criticality
         stats_local = lst_raw.reduceRegion(reducer=ee.Reducer.minMax(), geometry=region, scale=300, bestEffort=True)
         min_temp = ee.Number(stats_local.get('lst_min'))
         max_temp = ee.Number(stats_local.get('lst_max'))
         denom = max_temp.subtract(min_temp).max(0.1)
         lst_norm = lst_raw.subtract(min_temp).divide(denom)
         priority_score = lst_norm.subtract(ndvi_raw).rename('score')
+
+
+        # taking random points and computing priority score for these random points and sorting/ranking them
+        samples = priority_score.sample(
+                region=region,
+                scale=200,      
+                numPixels=500,  
+                geometries=True 
+            )
+        top_samples = samples.sort('score', False).limit(10) # Get top 10 for the slider
+
+
+
+
