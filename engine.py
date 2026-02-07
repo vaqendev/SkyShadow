@@ -25,3 +25,23 @@ else:
         print(" [SUCCESS] Connected to Earth Engine!")
     except Exception as e:
         print(f" Auth Error: {e}")
+
+
+def analyze_custom_region(geojson: dict, tree_increase: float = 0.0):
+    # try:
+        
+        region = ee.Geometry(geojson).simplify(maxError=100).buffer(distance=0, maxError=1)
+        center = region.centroid().coordinates().getInfo()
+
+        # Data fetch from satellite 
+        l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2")
+        l8 = ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
+        landsat_col = l9.merge(l8).filterBounds(region).filterDate('2024-01-01', '2024-05-30').filter(ee.Filter.lt('CLOUD_COVER', 40))
+        
+        if landsat_col.size().getInfo() == 0:
+            return {"error": "No clear satellite images found."}
+
+        lst_img = landsat_col.median()
+        s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED").filterBounds(region).filterDate('2024-01-01', '2024-05-30').filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30)).median()
+
+
