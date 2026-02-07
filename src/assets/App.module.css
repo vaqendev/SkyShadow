@@ -148,6 +148,10 @@
 .mission_control_container .mission_control_button:hover{
     cursor: pointer !important;
 }
+.mission_control_button:focus, .mission_control_button:focus-visible{
+    outline: none;
+    border: none;
+}
 
 @keyframes scan { 0% { top: 0%; opacity: 0; } 50% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
 
@@ -205,4 +209,16 @@
 
 .slider_val{
     color: #00ffff;
+}
+
+.stats_container{
+    justify-content: left;
+    width: 100%;
+    text-align: left;
+    margin-top: 1.2rem;
+    font-size: 0.8rem;
+}
+.stats_container h3{
+    font-size: 1.4rem;
+    margin-top: 0.6rem;
 }

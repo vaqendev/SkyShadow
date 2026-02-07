@@ -140,7 +140,7 @@ function App() {
   const performFreshView = (e) => {
     // console.log(drawRef);
     // drawRef.current.deleteAll();sop0oiplk;.,
-    setAreaAlert(prev => !prev);
+    // setAreaAlert(prev => !prev);
     setHighlightedGeoJson(null);
     setMissionControlView(false);
     setLocationCenter(null);
@@ -222,7 +222,7 @@ function App() {
       filled: false,
       stroked: true,
       pickable: true,
-      getLineColor: [255,255,255],
+      getLineColor: [0, 255, 255],
       getLineWidth: 10,
       lineWidthScale: 4,
       lineWidthMinPixels: 4,
@@ -285,6 +285,16 @@ function App() {
     setSliderValue(e[0]);
   }
 
+  const handlePolygonDraw = () => {
+    performFreshView();
+    setPolygonControl(true);
+  }
+
+  const handleCloseAlert = () => {
+    performFreshView();
+    setAreaAlert(prev => !prev);
+  }
+
   const handleMissionControlClick = (e) => {
 
     const calculatedArea = area(highlightedGeoJson);
@@ -342,17 +352,21 @@ function App() {
                     <PencilOff strokeWidth={3} /> Polygon
                 </Button> */}
                 <CardTitle>Information Panel</CardTitle>
-                <CardDescription className={styles.hud_description}>
+                {/* <CardDescription className={styles.hud_description}>
                   Skyshadow with the help of carefully curated algorithms helps in the urban
                   plantation of tree 
-                </CardDescription>
+                </CardDescription> */}
               </CardHeader>
               <CardContent>
 
                 <div className="temp-container">
                   <h3>Temperature in the selected area is:</h3>
-                  <h1>0°C</h1>
-                </div> 
+                  <h1>- -°C</h1>
+                </div>
+                <div className={styles.stats_container}>
+                  <h2>Live Temperature:</h2>
+                  <h3>- -°C</h3>
+                </div>
               </CardContent>
               <div className={styles.slider_container}>
                 <h2 className={styles.slider_heading}>Vegetation Increase:<span className={styles.slider_heading_animate} /></h2>
@@ -364,13 +378,13 @@ function App() {
 
                 <Slider onValueChange={handleSliderValueChange} disabled={!tileLoaded} className={styles.ndvi_slider} defaultValue={[0]} max={30} step={2} />    
               </div>
-              <Button onClick={() => {setPolygonControl(prev => !prev)}} className={styles.define_target_btn}>
+              <Button onClick={handlePolygonDraw} className={styles.define_target_btn}>
                 Define Target Zone
               </Button>
             </Card>
             {showMissionControl && (
               <div className={styles.mission_control_container}>
-                <h1 className={styles.mission_control_heading}>TARGET ACQUIRED</h1>
+                <h1 className={styles.mission_control_heading}>BINGO! GOT 'EM</h1>
                 <Button onClick={handleMissionControlClick} className={styles.mission_control_button}>
                   Analyse the whole region.
                 </Button>
@@ -388,7 +402,7 @@ function App() {
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <Button className={styles.alert_button} onClick={performFreshView} variant="destructive">
+                    <Button className={styles.alert_button} onClick={handleCloseAlert} variant="destructive">
                       Continue from fresh.
                     </Button>
                   </AlertDialogFooter>
