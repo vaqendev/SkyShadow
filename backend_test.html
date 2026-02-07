@@ -377,13 +377,14 @@ async function handleSearch(query) {
         });
 
         // LAYER MANAGER (Updated for City Boundary)
+        // LAYER MANAGER
         function updateLayers() {
             const layers = [];
             
-            // A. ANALYSIS HEATMAP
+            // A. ANALYSIS HEATMAP (Base Layer)
             if (window.resultUrl) {
                 layers.push(new TileLayer({
-                    id: 'heatmap-' + Date.now(),
+                    id: 'heatmap-' + Date.now(), // Force refresh on new URL
                     data: window.resultUrl,
                     minZoom: 0, maxZoom: 19, tileSize: 256,
                     opacity: 0.6, 
@@ -396,31 +397,49 @@ async function handleSearch(query) {
                 }));
             }
 
+            // NEW: CRITICAL RED ZONES (The "Hot Blocks") 
+            // Sits ON TOP of Heatmap
+            if (window.hotspotData) {
+                layers.push(new GeoJsonLayer({
+                    id: 'critical-zones',
+                    data: window.hotspotData,
+                    filled: true,
+                    stroked: true,
+                    // UPDATED VISUALS FOR HIGHER CONTRAST
+                    getFillColor: [255, 0, 0, 60],   // Slightly more visible red fill
+                    getLineColor: [255, 255, 255, 255], // WHITE BORDER to pop against the dark map
+                    getLineWidth: 40,
+                    lineWidthMinPixels: 3,           // Thicker lines
+                    pickable: true,
+                    autoHighlight: true,
+                    highlightColor: [255, 255, 0, 100], 
+                    onClick: info => alert("⚠️ TARGET ACQUIRED: High Thermal Signature")
+                }));
+            }
+
             // B. CITY BOUNDARY (The "White Bold Ambient" Layer)
             if (cityGeojson) {
-                // 1. Glow effect (Thick, transparent)
                 layers.push(new GeoJsonLayer({
                     id: 'city-glow',
                     data: cityGeojson,
                     filled: false,
                     stroked: true,
-                    getLineColor: [255, 255, 255, 50], // White transparent
-                    getLineWidth: 80, // Very thick in meters
+                    getLineColor: [255, 255, 255, 50], 
+                    getLineWidth: 80, 
                     lineWidthMinPixels: 6
                 }));
-                // 2. Core line (Thin, solid)
                 layers.push(new GeoJsonLayer({
                     id: 'city-core',
                     data: cityGeojson,
                     filled: false,
                     stroked: true,
-                    getLineColor: [255, 255, 255, 255], // Solid White
+                    getLineColor: [255, 255, 255, 255], 
                     getLineWidth: 20, 
                     lineWidthMinPixels: 2
                 }));
             }
 
-            // C. USER DRAWING
+            // C. USER DRAWING (The Cyan Line)
             if (points.length > 0) {
                 layers.push(new PolygonLayer({
                     id: 'poly',
@@ -434,7 +453,6 @@ async function handleSearch(query) {
             
             deckgl.setProps({ layers });
         }
-
         // --- BACKEND LOGIC (Unchanged) ---
         function updatePredictiveHUD() {
             const addedVeg = parseFloat(document.getElementById('tree-slider').value);
@@ -464,6 +482,7 @@ async function handleSearch(query) {
 
                 if (data.map_url) {
                     window.resultUrl = data.map_url;
+                    window.hotspotData = data.hotspots;
                     if(data.live_temp && data.live_temp !== "N/A") {
                         document.getElementById('live-temp-display').innerText = `${data.live_temp}°C`;
                     }
