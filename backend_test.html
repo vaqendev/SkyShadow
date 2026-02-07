@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SkyShadow Planner 🌳</title>
+    <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+    <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; background: #000; font-family: 'Courier New', monospace; color: #0ff; }
+        #map { width: 100vw; height: 100vh; }
+        #ui { position: absolute; top: 20px; left: 20px; background: rgba(0, 10, 20, 0.9); padding: 20px; border: 1px solid #0ff; z-index: 10; width: 340px; border-radius: 8px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.15);}
+        
+        h2 { margin-top: 0; color: #fff; font-size: 18px; text-shadow: 0 0 10px #0ff; }
+        
+        button { background: #002233; color: #0ff; border: 1px solid #0ff; padding: 12px; width: 100%; cursor: pointer; font-weight: bold; margin-top: 10px; font-size: 14px; text-transform: uppercase; transition: 0.2s; }
+        button:hover { background: #0ff; color: #000; box-shadow: 0 0 15px #0ff; }
+        
+        /* Cyber Slider */
+        input[type=range] { width: 100%; margin: 15px 0; accent-color: #0ff; background: #333; height: 4px; border-radius: 2px; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; font-size: 14px; border-top: 1px dashed #333; padding-top: 15px; }
+        .live-temp { font-size: 32px; color: #fff; text-align: center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 15px; font-weight: bold; }
+        .value { text-align: right; color: #fff; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h2>🛰️ SKYSHADOW</h2>
+        
+        <div id="live-weather" class="live-temp">--°C <span style="font-size:12px; color:#0ff; display:block; margin-top:5px; font-weight:normal">LIVE FEED</span></div>
+
+        <button onclick="startDraw()" id="draw-btn">✏️ NEW ANALYSIS</button>
+        
+        <div id="sim-controls" style="display:none; margin-top:20px;">
+            <label style="font-size:12px; color:#0ff; letter-spacing:1px;">🌱 VEGETATION INJECTION</label>
+            <input type="range" id="tree-slider" min="0" max="0.3" step="0.05" value="0" onchange="runAnalysis()">
+            <div class="slider-label">
+                <span>Current</span>
+                <span id="slider-val" style="color:#fff">0%</span>
+                <span>Max Capacity</span>
+            </div>
+        </div>
+
+        <div id="stats" class="stat-grid">
+            <div style="grid-column: 1 / -1; text-align: center; color: #555; font-size: 12px;">Waiting for input...</div>
+        </div>
+    </div>
+    <div id="map"></div>
+
+    <script>
+        const {DeckGL, TileLayer, BitmapLayer, PolygonLayer} = deck;
+        const BACKEND_URL = "https://terrainbyte-production.up.railway.app"; 
+
+        let deckgl;
+        let drawing = false;
+        let points = [];
+        let lastGeojson = null;
+
+        deckgl = new DeckGL({
+            container: 'map',
+            mapStyle: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+            initialViewState: { longitude: 77.20, latitude: 28.61, zoom: 12 },
+            controller: {doubleClickZoom: false},
+            onClick: handleMapClick,
+            layers: []
+        });
+
+        function startDraw() {
+            // 1. RESET EVERYTHING
+            drawing = true;
+            points = [];
+            lastGeojson = null;
+            window.resultUrl = null; // <--- This wipes the old heatmap
+            
+            // 2. UI Updates
+            updateLayers(); // Forces the map to clear
+            document.getElementById('draw-btn').innerText = "🔴 RECORDING POINTS...";
+            document.getElementById('draw-btn').style.background = "#330000";
+            document.getElementById('draw-btn').style.borderColor = "#ff0000";
+            document.getElementById('draw-btn').style.color = "#ff0000";
+            document.getElementById('sim-controls').style.display = 'none';
+            document.getElementById('stats').innerHTML = "<div style='grid-column:1/-1; color:#0ff'>1. Click points to outline area<br>2. Double-click to finish</div>";
+        }
+
+        function handleMapClick(info) {
+            if (!drawing || !info.coordinate) return;
+            points.push(info.coordinate);
+            updateLayers();
+        }
+
+        document.getElementById('map').addEventListener('dblclick', (e) => {
+            if (drawing && points.length > 2) {
+                drawing = false;
+                const closedRing = [...points, points[0]];
+                lastGeojson = { "type": "Polygon", "coordinates": [closedRing] };
+                
+                document.getElementById('draw-btn').innerText = "✏️ NEW ANALYSIS";
+                document.getElementById('draw-btn').style.background = "#002233";
+                document.getElementById('draw-btn').style.borderColor = "#0ff";
+                document.getElementById('draw-btn').style.color = "#0ff";
+                document.getElementById('sim-controls').style.display = 'block';
+                
+                // Reset slider
+                document.getElementById('tree-slider').value = 0;
+                document.getElementById('slider-val').innerText = "0%";
+                runAnalysis();
+            }
+        });
+
+        function updateLayers() {
+            const layers = [];
+            
+            // Layer 1: The Heatmap (Only if URL exists)
+            if (window.resultUrl) {
+                layers.push(new TileLayer({
+                    id: 'analysis-result-' + Date.now(), // Force refresh
+                    data: window.resultUrl,
+                    minZoom: 0, maxZoom: 19, tileSize: 256,
+                    opacity: 0.65,
+                    renderSubLayers: props => {
+                        const {bbox: {west, south, east, north}} = props.tile;
+                        return new BitmapLayer(props, {
+                            data: null, image: props.data, bounds: [west, south, east, north]
+                        });
+                    }
+                }));
+            }
+
+            // Layer 2: The Drawing Line (Green Cyber Line)
+            if (points.length > 0) {
+                layers.push(new PolygonLayer({
+                    id: 'drawing-poly',
+                    data: [{ polygon: points }],
+                    getPolygon: d => d.polygon,
+                    getFillColor: [0, 255, 255, 30], // Slight cyan tint
+                    getLineColor: [0, 255, 255, 255], // Cyan Line
+                    getLineWidth: 3,
+                    lineWidthMinPixels: 2
+                }));
+            }
+            deckgl.setProps({ layers });
+        }
+
+        async function runAnalysis() {
+            if (!lastGeojson) return;
+            
+            const treeVal = parseFloat(document.getElementById('tree-slider').value);
+            document.getElementById('slider-val').innerText = `+${Math.round(treeVal*100)}%`;
+            document.getElementById('stats').innerHTML = "<div style='grid-column:1/-1; color:#ff0; text-align:center'>⚡ PROCESSING SATELLITE DATA...</div>";
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/analyze`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ 
+                        geojson: lastGeojson,
+                        tree_increase: treeVal 
+                    })
+                });
+                const data = await res.json();
+
+                if (data.map_url) {
+                    window.resultUrl = data.map_url;
+                    updateLayers();
+                    
+                    document.getElementById('live-weather').innerHTML = `${data.live_temp}°C <span style="font-size:12px; color:#0ff; display:block; margin-top:5px; font-weight:normal">LIVE FEED</span>`;
+
+                    document.getElementById('stats').innerHTML = `
+                        <div style="color:#aaa">AVG TEMP</div> <div class="value" style="color:${getTempColor(data.stats.avg_temp)}">${data.stats.avg_temp}°C</div>
+                        <div style="color:#aaa">RISK LEVEL</div> <div class="value">${data.stats.risk_score}</div>
+                        <div style="color:#aaa">NDVI (VEG)</div> <div class="value" style="color:#0f0">${data.stats.avg_ndvi}</div>
+                    `;
+                }
+            } catch (e) {
+                console.error(e);
+                document.getElementById('stats').innerHTML = "<div style='color:red'>Server Error</div>";
+            }
+        }
+
+        function getTempColor(t) {
+            if (t > 40) return '#ff0000'; // Red
+            if (t > 35) return '#ffaa00'; // Orange
+            return '#00ffff'; // Cyan
+        }
+    </script>
+</body>
+</html>
