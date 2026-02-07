@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import './App.css';
 import DrawControl from "./Drawcontrol";
 
-import { PencilOff, SquareDashedMousePointer } from "lucide-react";
+import { Search, SquareDashedMousePointer } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 
@@ -34,6 +34,7 @@ const INITIAL_VIEW_STATE = {
   latitude: 28.6139,
   longitude: 77.2089,
   zoom: 6,
+  maxZoom: 13
 };
 
 const MAPBOX_ACCESS_TOKEN = "pk.eyJ1Ijoienlnb3RlMTAwIiwiYSI6ImNtbDJscm96ZDBid2UzZnNkNzJ2cHptNjUifQ.CgyLlj3D28Sxh20MlhDGhw";
@@ -107,6 +108,12 @@ function App() {
   const [highlightedGeoJson, setHighlightedGeoJson] = useState(null);
   const [showMissionControl, setMissionControlView] = useState(false);
   const [tileLoaded, setTileLoaded] = useState(false);
+  const [tileUrl, setTileUrl] = useState(null);
+  const [liveTemperature, setLiveTemperature] = useState(null);
+  const [avgTemperature, setAvgTemperature] = useState(null);
+  const [ndviScore, setNdviScore] = useState(null);
+
+
   const [locationCenter, setLocationCenter] = useState(null);
   const [sliderValue, setSliderValue] = useState(0);
 
@@ -144,33 +151,38 @@ function App() {
     setHighlightedGeoJson(null);
     setMissionControlView(false);
     setLocationCenter(null);
+    setLiveTemperature(null);
+    setAvgTemperature(null);
+    setNdviScore(null);
+
     // setPolygonControl(false);
 
   }
   
 
   const layers = [
-    // new TileLayer({
-    //   id: "TileLayer",
-    //   //data: "https://earthengine.googleapis.com/v1/projects/earthengine-legacy/maps/cae4a54afdc6734ec7d7d44cff1a9e22-6925c060e298c439cba148dceae00061/tiles/{z}/{x}/{y}",
-    //     //data: "https://earthengine.googleapis.com/v1/projects/earthengine-legacy/maps/628598f88d0c8154fe1e9074e2130e80-8d43ed89a6b802c49b5847695b27d69b/tiles/{z}/{x}/{y}",
-    //     data: "https://earthengine.googleapis.com/v1/projects/global-sun-484918-f5/maps/46ab6f24a82fcf7a2ce7dc6fae49e04d-9ae5e551c4220d68e0b4a0c819aa8e64/tiles/{z}/{x}/{y}",
-    //   tileSize: 326,
-    //   minZoom: 0,
-    //   maxZoom: 19,
-    //   opacity: 0.02,
+    new TileLayer({
+      id: "TileLayer",
+      //data: "https://earthengine.googleapis.com/v1/projects/earthengine-legacy/maps/cae4a54afdc6734ec7d7d44cff1a9e22-6925c060e298c439cba148dceae00061/tiles/{z}/{x}/{y}",
+        //data: "https://earthengine.googleapis.com/v1/projects/earthengine-legacy/maps/628598f88d0c8154fe1e9074e2130e80-8d43ed89a6b802c49b5847695b27d69b/tiles/{z}/{x}/{y}",
+      data: tileUrl,
+      tileSize: 256,
+      minZoom: 0,
+      maxZoom: 19,
+      opacity: 0.6,
 
-    //   renderSubLayers: (props) => {
-    //     const {
-    //       bbox: { west, south, east, north }
-    //     } = props.tile;
+      renderSubLayers: (props) => {
+        const {
+          bbox: { west, south, east, north }
+        } = props.tile;
 
-    //     return new BitmapLayer(props, {
-    //       data: null,
-    //       image: props.data,
-    //       bounds: [west, south, east, north]
-    //     });
-    //   },
+        return new BitmapLayer(props, {
+          data: null,
+          image: props.data,
+          bounds: [west, south, east, north]
+        });
+      },
+    }),
       
     //   pickable: true,
     //   onHover: info => setHoverInfo(info)
@@ -234,7 +246,7 @@ function App() {
   ];
 
 
-  const onUpdate = useCallback(e => {
+  const onUpdate = useCallback(async e => {
     // THIS is your GeoJSON data
     const geojson = e.features[0];
     console.log(geojson);
@@ -245,6 +257,25 @@ function App() {
       // allow the user to proceed.
       // load the tile.
       console.log("Loading the tile.");
+      const response = await fetch("http://127.0.0.1:8000/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          geojson: geojson.geometry,
+          tree_increase: sliderValue,
+          hotspot_count: 1,
+        })
+      });
+      const data = await response.json();
+      console.log(data);
+      setTileUrl(data.map_url);
+      setLiveTemperature(data.live_temp);
+      setAvgTemperature(data.stats.avg_temp);
+      setNdviScore(data.stats.avg_ndvi);
+      setTileLoaded(true);
+
+      
+
     }else{
       setAreaAlert(true);
     }
@@ -301,6 +332,27 @@ function App() {
     if((calculatedArea / 1000000) <= 1483){
       // load the corresponding tile.
       console.log("Loading the corresponding tiles...");
+      fetch("http://127.0.0.1:8000/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body:JSON.stringify({geojson: highlightedGeoJson, tree_increase: 0.0, hotspot_count: 5})
+      }).then(response => {
+        if(response.ok){
+          console.log("response is ok!");
+          response.json().then(data => {
+            console.log(data);
+            setTileUrl(data.map_url);
+            setLiveTemperature(data.live_temp);
+            setAvgTemperature(data.stats.avg_temp);
+            setNdviScore(data.stats.avg_ndvi);
+          }).catch(error => {
+            throw new Error(error);
+          })
+    
+        }
+      }).catch(error => {
+        throw new Error(error);
+      })
       setTileLoaded(true);
 
     }else setAreaAlert(true);
@@ -336,8 +388,11 @@ function App() {
                     <h1>Skyshadow</h1>
                     <h3>By TerrainByte</h3>
                   </div>
-                  
-                  <Input onKeyDown={handleSearch} className={styles.hero_input} placeholder="place" />
+                  <div className={styles.input_container}>
+                    {/* <Search size={18} color="#f0f0f0" /> */}
+                    <Input onKeyDown={handleSearch} className={styles.hero_input} placeholder="place" />
+                  </div>
+                    
                   <div className={styles.search_place_container}>
                     {placeResult && (
                       placeResult.map((element, index) => (
@@ -351,21 +406,23 @@ function App() {
                   {/* <Button onClick={() => {setPolygonControl(prev => !prev);}} className={styles.polygon_toggle_button}>
                     <PencilOff strokeWidth={3} /> Polygon
                 </Button> */}
-                <CardTitle>Information Panel</CardTitle>
-                {/* <CardDescription className={styles.hud_description}>
-                  Skyshadow with the help of carefully curated algorithms helps in the urban
-                  plantation of tree 
-                </CardDescription> */}
+                <CardTitle className={styles.card_title}>STATS PANEL: </CardTitle>
               </CardHeader>
               <CardContent>
 
                 <div className="temp-container">
-                  <h3>Temperature in the selected area is:</h3>
-                  <h1>- -°C</h1>
+                  <h3>Average Temp. in the area during summer 2024:</h3>
+                  <h1>{avgTemperature != null ? avgTemperature : "- -"}°C</h1>
                 </div>
                 <div className={styles.stats_container}>
-                  <h2>Live Temperature:</h2>
-                  <h3>- -°C</h3>
+                  <div>
+                    <h2>Live Temperature:</h2>
+                    <h3>{liveTemperature != null ? liveTemperature : "- -"}°C</h3>
+                  </div>
+                  <div>
+                    <h2>NDVI Score:</h2>
+                    <h3>{ndviScore != null ? ndviScore : "- -"}</h3>
+                  </div>
                 </div>
               </CardContent>
               <div className={styles.slider_container}>

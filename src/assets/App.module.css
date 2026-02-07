@@ -184,7 +184,7 @@
 .slider_heading .slider_heading_animate{
     animation: stretch 1.5s ease-in forwards;
     display: block;
-    height: 5px;
+    height: 2px;
     background-color: #f0f0f0;
 }
 
@@ -217,8 +217,24 @@
     text-align: left;
     margin-top: 1.2rem;
     font-size: 0.8rem;
+    display: flex;
+    justify-content: space-between;
 }
 .stats_container h3{
     font-size: 1.4rem;
     margin-top: 0.6rem;
+}
+
+.typography_container h3{
+    font-size: 0.8rem;
+}
+
+.input_container{
+    display: inline-block;
+    margin-top: 10px;margin-bottom: 10px;;
+}
+
+.card_title{
+    font-size: 1.5rem;
+    font-weight: bold;
 }
