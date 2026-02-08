@@ -1,197 +1,212 @@
-// <!DOCTYPE html>
-// <html lang="en">
-// <head>
-//     <meta charset="UTF-8">
-//     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-//     <title>SkyShadow: Direct Focus</title>
-//     <style>
-//         body, html {
-//             margin: 0;
-//             padding: 0;
-//             width: 100%;
-//             height: 100%;
-//             /* Deep Void Background */
-//             background-color: #030510;
-//             overflow: hidden;
-//             font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-//             display: flex;
-//             justify-content: center;
-//             align-items: center;
-//         }
+import { useEffect } from "react";
+import styles from "../src/assets/Home.module.css";
+import { Link } from "react-router-dom";
 
-//         #container {
-//             position: relative;
-//             width: 100vw;
-//             height: 100vh;
-//             display: flex;
-//             justify-content: center;
-//             align-items: center;
-//         }
+export default function Homepage(){
 
-//         /* --- THE MAP OBJECT --- */
-//         #world-map {
-//             /* 1. START STATE: Sphere */
-//             width: 300px;
-//             height: 300px;
-//             border-radius: 50%;
-            
-//             background-image: url('https://upload.wikimedia.org/wikipedia/commons/c/cd/Land_ocean_ice_2048.jpg');
-            
-//             /* Sizing for seamless rotation (2x width) */
-//             background-size: 200% 100%;
-//             background-repeat: repeat-x;
-//             background-position: 0 50%;
+    useEffect(() => {
+          const heroTitle = document.getElementById('heroTitle');
+        const mainInterface = document.getElementById('mainInterface');
+        const mainSlider = document.getElementById('mainSlider');
+        const fixedNav = document.getElementById('fixedNav');
+        const progress = document.getElementById('progress');
+        const streamLine = document.getElementById('streamLine');
 
-//             /* THEME: Dark Purple/Blue Satellite */
-//             filter: grayscale(100%) contrast(140%) brightness(90%) sepia(100%) hue-rotate(230deg) saturate(350%);
-            
-//             /* 3D Shadows */
-//             box-shadow: inset 40px 0 80px 10px rgba(0,0,0,1), 
-//                         0 0 60px rgba(100, 50, 255, 0.5);
-            
-//             position: absolute;
-//             z-index: 1;
+        // 1. INITIALIZATION 
+        // Force scroll to top on reload to ensure animation sequence starts correctly
+        window.addEventListener('load', () => { 
+            if (window.scrollY > 10) {
+                window.scrollTo(0, 0);
+            }
+        });
 
-//             /* UNIFIED TRANSITION: 
-//                Everything happens over 3 seconds with a smooth ease-in-out curve.
-//             */
-//             transition: width 3s cubic-bezier(0.45, 0, 0.55, 1),
-//                         height 3s cubic-bezier(0.45, 0, 0.55, 1),
-//                         border-radius 3s cubic-bezier(0.45, 0, 0.55, 1),
-//                         background-size 3s cubic-bezier(0.45, 0, 0.55, 1),
-//                         background-position 3s cubic-bezier(0.45, 0, 0.55, 1),
-//                         box-shadow 3s ease;
-//         }
+        // 2. SCROLL ENGINE
+        window.addEventListener('scroll', () => {
+            const y = window.scrollY;
+            const viewHeight = window.innerHeight;
 
-//         /* ROTATION ANIMATION */
-//         .rotating {
-//             animation: rotateGlobe 4s linear infinite;
-//         }
+            // A. HEADER DOCKING & SLIDER REVEAL
+            // Trigger: As soon as user starts scrolling
+            if (y > 50) {
+                heroTitle.classList.add('docked');
+                mainInterface.classList.add('active');
+                fixedNav.style.opacity = 1;
+            } else {
+                heroTitle.classList.remove('docked');
+                mainInterface.classList.remove('active');
+                fixedNav.style.opacity = 0;
+            }
 
-//         @keyframes rotateGlobe {
-//             from { background-position: 0 50%; }
-//             to { background-position: -200% 50%; } 
-//         }
+            // B. DATA STREAM LINE 
+            // Trigger: Only visible when scrolling between Intro and Vertical content
+            if (y > viewHeight * 0.8 && y < viewHeight * 1.5) {
+                streamLine.style.opacity = 1;
+                streamLine.style.height = (y - viewHeight * 0.5) + 'px'; // Dynamic growth
+            } else {
+                streamLine.style.opacity = 0;
+            }
 
-//         /* 2. FINAL STATE: Expanded AND Focused on India */
-//         #world-map.expanded {
-//             /* Full Screen Dimensions */
-//             width: 100vw;
-//             height: 100vh;
-//             border-radius: 0;
-            
-//             /* Vignette shadow instead of sphere shadow */
-//             box-shadow: inset 0 0 300px rgba(0,0,0,1); 
-            
-//             /* ZOOM & COORDINATES DIRECTLY APPLIED HERE */
-//             /* We zoom in to 400% size immediately during expansion */
-//             background-size: 400% 400%; /* Height scales with width now for zoom */
-            
-//             /* Coordinates for India centered */
-//             background-position: 72% 40%;
-//         }
+            // C. TEXT REVEAL LOGIC
+            const text = document.getElementById('revealText');
+            const spans = text.querySelectorAll('span');
+            const rect = text.getBoundingClientRect();
 
-//         /* --- TEXT OVERLAY --- */
-//         .text-overlay {
-//             position: absolute;
-//             z-index: 2;
-//             text-align: left;
-//             color: white;
-//             opacity: 0;
-//             transform: translateY(30px);
-//             transition: opacity 1.5s ease, transform 1.5s ease;
-//             pointer-events: none;
-            
-//             background: rgba(12, 12, 30, 0.85);
-//             padding: 40px;
-//             border-left: 5px solid #bd00ff;
-//             backdrop-filter: blur(12px);
-//             box-shadow: 0 30px 60px rgba(0,0,0,0.8);
-//             border-radius: 0 20px 20px 0;
-//         }
+            // Reveal starts when text enters bottom 80% of screen
+            if (rect.top < viewHeight * 0.85) {
+                const scrolled = Math.max(0, (viewHeight * 0.85) - rect.top);
+                const maxScroll = viewHeight * 0.5; 
+                const percentage = Math.min(1, scrolled / maxScroll);
+                const activeCount = Math.floor(percentage * spans.length);
+                
+                spans.forEach((span, idx) => {
+                    if (idx <= activeCount) span.classList.add('active');
+                    else span.classList.remove('active');
+                });
+            }
+        });
 
-//         .text-overlay h2 {
-//             font-size: 1.2rem;
-//             text-transform: uppercase;
-//             letter-spacing: 4px;
-//             color: #bd00ff;
-//             margin: 0 0 10px 0;
-//             text-shadow: 0 0 15px rgba(189, 0, 255, 0.6);
-//         }
+        // 3. HORIZONTAL SLIDER LOGIC
+        mainSlider.addEventListener('scroll', () => {
+            const maxScroll = mainSlider.scrollWidth - mainSlider.clientWidth;
+            const scrollPercentage = mainSlider.scrollLeft / maxScroll;
+            progress.style.left = (scrollPercentage * 66.66) + '%';
+        });
 
-//         .text-overlay h1 {
-//             font-size: 4rem;
-//             margin: 0;
-//             font-weight: 800;
-//             line-height: 1;
-//             margin-bottom: 20px;
-//             color: #ffffff;
-//         }
+        function scrollToSlide(index) {
+            mainSlider.scrollTo({ 
+                left: window.innerWidth * index, 
+                behavior: 'smooth' 
+            });
+        }
+    })
 
-//         .text-overlay p {
-//             font-size: 1.3rem;
-//             color: #c0c0ff;
-//             max-width: 550px;
-//             line-height: 1.6;
-//             margin: 0;
-//         }
-
-//         .text-overlay.visible {
-//             opacity: 1;
-//             transform: translateY(0);
-//         }
-//     </style>
-// </head>
-// <body>
-
-//     <div id="container">
-//         <div id="world-map" class="rotating"></div>
+    return(
+        <div className={styles.home_wrapper}>
+            <div className="stars"></div>
+    
+      <div className="intro-track">
         
-//         <div class="text-overlay" id="message">
-//             <h2>SkyShadow</h2>
-//             <h1>Global Heat<br>Analysis</h1>
-//             <p><strong>Target Acquired:</strong> India Sector.<br>
-//             Satellite thermal scanning complete. Urban Heat Island data ready for processing.</p>
-//         </div>
-//     </div>
+        <div className="sticky-wrapper">
+            
+            <div className="hero-container" id="heroTitle">
+                <h1 id="Projectname">SKYSHADOW</h1>
+                <p id="a">Orchestrating Urban Cooling via Satellite Synthesis</p>
+            </div>
+            <div className="scroll-hint">SCROLL TO INITIALIZE SYSTEM</div>
 
-//     <script>
-//         const map = document.getElementById('world-map');
-//         const text = document.getElementById('message');
+            <div className="scroll-nav" id="fixedNav">
+                <div className="nav-bar">
+                    <div className="nav-progress" id="progress"></div>
+                    {/* Fixed onClick syntax */}
+                    <button onClick={() => scrollToSlide(0)}></button>
+                    <button onClick={() => scrollToSlide(1)}></button>
+                    <button onClick={() => scrollToSlide(2)}></button>
+                </div>
+            </div>
 
-//         // TIMELINE
+            <div className="main-interface" id="mainInterface">
+                <div className="horizontal-slider" id="mainSlider">
+                    
+                    <section className="slide">
+                        <div className="slide-bg"><div className="grid-layer"></div></div>
+                        <div className="hook">
+                            <div className="titles"><h3 id="how">How it Works?</h3></div>
+                            <div className="subheading"><p><b>Beyond Observation:</b> Environmental Data Synthesis. We leverage Landsat 8/9 thermal infrared sensors and Sentinel-2 optical data to create a unified environmental grid.</p></div>
+                        </div>
+                    </section>
+
+                    <section className="slide">
+                        <div className="slide-bg heat-map"></div>
+                        <div className="hook">
+                            <div className="titles"><h3 id="ab">THE HOOK</h3></div>
+                            <div className="subheading"><p>SkyShadow merges multi-spectral satellite imagery with geospatial mathematics to identify "Red Zones." We provide city planners with precise data to engineer a cooler future.</p></div>
+                        </div>
+                    </section>
+
+                    <section className="slide">
+                        <div className="slide-bg bio-veins"></div>
+                        <div className="hook">
+                            <div className="titles"><h3 id="MISSION">MISSION</h3></div>
+                            <div className="subheading"><p>Urban Heat Islands are public health crises. We provide the infrastructure to close the "cooling gap," empowering municipalities to build life-sustaining green corridors.</p></div>
+                        </div>
+                    </section>
+                </div>
+            </div>
         
-//         // 1. Spin for 5 seconds
-//         setTimeout(() => {
-//             transitionToIndia();
-//         }, 5000);
+        </div>
+      </div> 
+      
+      {/* NOTE: I removed the extra </div> tags that were here. 
+         This allows the code below to be "reachable".
+      */}
 
-//         function transitionToIndia() {
-//             // A. FREEZE ROTATION
-//             // Get current computed position to prevent snapping
-//             const computedStyle = window.getComputedStyle(map);
-//             const currentBgPos = computedStyle.getPropertyValue('background-position');
+      <div className="data-stream-line" id="streamLine"></div>
+
+      <div className="vertical-section" id="verticalContent">
+        
+        <div className="reveal-container">
+            <div className="reveal-text" id="revealText">
+                <span>The Urban Heat Crisis is invisible.</span>
+                <span>Concrete traps heat.</span>
+                <span>Temperatures rise 5°C.</span>
+                <span>Cities are suffocating.</span>
+                <span>Vulnerable populations are at risk.</span>
+                <span>Energy demands are spiking.</span>
+                <span className="final-line">We need a new lens.</span>
+            </div>
+        </div>
+
+        <div className="bento-section">
+            <div className="bento-header">
+                <span className="mono-tag">TECHNICAL SPECIFICATIONS</span>
+                <h2 className="bento-main-title">The Digital Twin Engine.</h2>
+            </div>
+            <div className="bento-grid">
+                <div className="bento-box">
+                    <div className="glow-spot"></div>
+                    <div>
+                        <div className="bento-num">30m</div>
+                        <div className="bento-title">Spatial Precision</div>
+                    </div>
+                    <p className="bento-desc">Granular analysis down to individual city blocks using fused Sentinel-2 optical grids.</p>
+                </div>
+                <div className="bento-box">
+                    <div className="glow-spot"></div>
+                    <div>
+                        <div className="bento-num">&lt;10s</div>
+                        <div className="bento-title">Analysis Latency</div>
+                    </div>
+                    <p className="bento-desc">Real-time computation pipeline powered by Google Earth Engine distributed cloud clusters.</p>
+                </div>
+                <div className="bento-box bento-wide">
+                    <div className="glow-spot"></div>
+                    <div className="bento-wide-content">
+                        <div className="bento-num">L8+L9</div>
+                        <div className="bento-title">Multi-Spectral Fusion</div>
+                    </div>
+                    <p className="bento-desc">We merge Landsat 8 and 9 thermal data to pierce through atmospheric interference, ensuring 100% data availability.</p>
+                </div>
+            </div>
+        </div>
+
+        <section className="footer-section">
+            <div className="footer-tag">SDG 13 • CLIMATE ACTION</div>
+            {/* Fixed self-closing <br /> tag */}
+            <h1 className="footer-title">Build the cities of<br />tomorrow, today.</h1>
             
-//             map.classList.remove('rotating');
-//             map.style.backgroundPosition = currentBgPos;
+            {/* Note: If you are using React Router, change <a href> to <Link to> 
+               Otherwise, a standard anchor tag is fine.
+            */}
+            <Link to="/app" className="launch-btn">Launch Thermal Engine</Link>
             
-//             // Force browser update
-//             void map.offsetWidth;
-
-//             // B. EXPAND & FOCUS (Combined Step)
-//             // We set a tiny timeout to allow the 'style' removal to register
-//             // so the CSS class takes over seamlessly.
-//             setTimeout(() => {
-//                 map.style.backgroundPosition = ''; // Remove inline style so class takes over
-//                 map.classList.add('expanded'); // Triggers width, height, AND zoom to India
-//             }, 50);
-//         }
-
-//         // 2. SHOW TEXT (After the 3s expansion finishes)
-//         setTimeout(() => {
-//             text.classList.add('visible');
-//         }, 8100); // 5000 (spin) + 3000 (expand) + buffer
-
-//     </script>
-// </body>
-// </html>
+            <div className="version-text">v1.0.4 - Connected to Earth Engine</div>
+            
+            <div className="footer-copy">TERRAINBYTE © 2026. All Systems Nominal.<br />Powered by Google Earth Engine.</div>
+        </section>
+    </div>
+    
+    
+        </div>        
+        
+    )
+}

@@ -312,8 +312,33 @@ function App() {
 
   }
 
-  const handleSliderValueChange = (e) => {
+  const handleSliderValueChange =  async function(e){
     setSliderValue(e[0]);
+    try{
+
+      const response = fetch("http://127.0.0.1:8000/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          geojson: highlightedGeoJson,
+          tree_increase: e[0],
+          hotspot_count: 1,
+        })
+      });
+      if(!response.ok){
+        throw new Error("Something went wrong with the server...");
+
+      }
+    }catch(error){
+      console.log(error);
+    }
+
+
+
+    const data = await response.json();
+    console.log(data);
+    setTileUrl(data.map_url);
+    setNdviScore(data.stats.avg_ndvi);
   }
 
   const handlePolygonDraw = () => {
