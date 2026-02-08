@@ -219,34 +219,33 @@
 
         let hotspotCount = 5; 
 
-        // 🟢 FIX 1: TOGGLE LOGIC
         function toggleHotspots() {
             const container = document.getElementById('hotspot-slider-container');
             const btn = document.getElementById('hotspot-toggle');
             
             if (container.style.display === 'none') {
-                // TURN ON
+                // --- TURN ON ---
                 container.style.display = 'block';
                 btn.innerText = "🎯 HOTSPOTS: ON";
                 btn.style.background = "#ff5555";
                 btn.style.color = "#fff";
                 
-                // RESTORE DATA LOGIC
+                // CRITICAL FIX: Restore data from backup
                 if (allHotspots) {
-                    window.hotspotData = allHotspots; // <--- CRITICAL: Restore data
-                    updateLayers(); 
+                    window.hotspotData = allHotspots; 
+                    updateHotspotCount(); // This will slice and render
                 } else if (lastGeojson) {
-                    runAnalysis(false);
+                    runAnalysis(false); // Fetch if missing
                 }
             } else {
-                // TURN OFF
+                // --- TURN OFF ---
                 container.style.display = 'none';
                 btn.innerText = "🎯 HOTSPOTS: OFF";
                 btn.style.background = "#220000";
                 btn.style.color = "#ff5555";
                 
-                // HIDE DATA LOGIC
-                window.hotspotData = null; // <--- CRITICAL: Clear map
+                // CRITICAL FIX: Hide data but keep backup
+                window.hotspotData = null; 
                 updateLayers();
             }
         }
@@ -256,7 +255,16 @@
             const val = document.getElementById('hotspot-slider').value;
             hotspotCount = parseInt(val);
             document.getElementById('hotspot-count-val').innerText = `TOP ${val}`;
-            // Removed runAnalysis() call here to prevent reloading
+            
+            // CRITICAL FIX: Ensure we have data to slice
+            if (allHotspots) {
+                // Always slice from the master backup, not the current view
+                window.hotspotData = {
+                    type: "FeatureCollection",
+                    features: allHotspots.features.slice(0, hotspotCount)
+                };
+            }
+            
             updateLayers(); 
         }
 
@@ -378,10 +386,11 @@
         });
 
         // 🟢 FIX 3: OPTIMIZED LAYER MANAGER (Client Side Slicing)
+        // 🟢 FIX 3: OPTIMIZED LAYER MANAGER (Now with Slicing Logic)
         function updateLayers() {
             const layers = [];
             
-            // A. ANALYSIS HEATMAP
+            // A. ANALYSIS HEATMAP (Base Layer)
             if (window.resultUrl) {
                 layers.push(new TileLayer({
                     id: 'heatmap-' + Date.now(), 
@@ -397,14 +406,15 @@
                 }));
             }
 
-            // B. CRITICAL RED ZONES (The Slider Fix)
+            // B. CRITICAL RED ZONES (Hotspots) - 🟢 THE FIX IS HERE
             if (window.hotspotData && window.hotspotData.features) {
-                // SLICE THE DATA based on the slider value
+                
+                // 1. SLICE THE DATA: Only take the 'Top X' features based on slider
                 const slicedFeatures = window.hotspotData.features.slice(0, hotspotCount);
 
                 layers.push(new GeoJsonLayer({
                     id: 'critical-zones',
-                    data: slicedFeatures, // <--- PASS SLICED DATA, NOT RAW DATA
+                    data: slicedFeatures, // <--- Use sliced list, NOT full list
                     filled: true,
                     stroked: true,
                     getFillColor: [255, 0, 0, 60],   
@@ -421,21 +431,35 @@
             // C. CITY BOUNDARY
             if (cityGeojson) {
                 layers.push(new GeoJsonLayer({
-                    id: 'city-glow', data: cityGeojson, filled: false, stroked: true,
-                    getLineColor: [200, 255, 255, 100], getLineWidth: 80, lineWidthMinPixels: 6
+                    id: 'city-glow',
+                    data: cityGeojson,
+                    filled: false,
+                    stroked: true,
+                    getLineColor: [200, 255, 255, 100], 
+                    getLineWidth: 80, 
+                    lineWidthMinPixels: 6
                 }));
                 layers.push(new GeoJsonLayer({
-                    id: 'city-core', data: cityGeojson, filled: false, stroked: true,
-                    getLineColor: [255, 255, 255, 255], getLineWidth: 20, lineWidthMinPixels: 2
+                    id: 'city-core',
+                    data: cityGeojson,
+                    filled: false,
+                    stroked: true,
+                    getLineColor: [255, 255, 255, 255], 
+                    getLineWidth: 20, 
+                    lineWidthMinPixels: 2
                 }));
             }
 
             // D. USER DRAWING
             if (points.length > 0) {
                 layers.push(new PolygonLayer({
-                    id: 'poly', data: [{ polygon: points }], getPolygon: d => d.polygon,
-                    getFillColor: [0, 255, 255, 40], getLineColor: [0, 255, 255, 255], 
-                    getLineWidth: 2, lineWidthMinPixels: 2
+                    id: 'poly',
+                    data: [{ polygon: points }],
+                    getPolygon: d => d.polygon,
+                    getFillColor: [0, 255, 255, 40], 
+                    getLineColor: [0, 255, 255, 255], 
+                    getLineWidth: 2, 
+                    lineWidthMinPixels: 2
                 }));
             }
             
