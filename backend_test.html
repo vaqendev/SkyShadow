@@ -231,8 +231,9 @@
                 btn.style.background = "#ff5555";
                 btn.style.color = "#fff";
                 
-                // If we have data, show it. If not, fetch it.
+                // RESTORE DATA LOGIC
                 if (allHotspots) {
+                    window.hotspotData = allHotspots; // <--- CRITICAL: Restore data
                     updateLayers(); 
                 } else if (lastGeojson) {
                     runAnalysis(false);
@@ -243,6 +244,9 @@
                 btn.innerText = "🎯 HOTSPOTS: OFF";
                 btn.style.background = "#220000";
                 btn.style.color = "#ff5555";
+                
+                // HIDE DATA LOGIC
+                window.hotspotData = null; // <--- CRITICAL: Clear map
                 updateLayers();
             }
         }
@@ -377,7 +381,7 @@
         function updateLayers() {
             const layers = [];
             
-            // A. ANALYSIS HEATMAP (Base Layer)
+            // A. ANALYSIS HEATMAP
             if (window.resultUrl) {
                 layers.push(new TileLayer({
                     id: 'heatmap-' + Date.now(), 
@@ -393,11 +397,14 @@
                 }));
             }
 
-            // B. CRITICAL RED ZONES (Hotspots)
-            if (window.hotspotData) {
+            // B. CRITICAL RED ZONES (The Slider Fix)
+            if (window.hotspotData && window.hotspotData.features) {
+                // SLICE THE DATA based on the slider value
+                const slicedFeatures = window.hotspotData.features.slice(0, hotspotCount);
+
                 layers.push(new GeoJsonLayer({
                     id: 'critical-zones',
-                    data: window.hotspotData,
+                    data: slicedFeatures, // <--- PASS SLICED DATA, NOT RAW DATA
                     filled: true,
                     stroked: true,
                     getFillColor: [255, 0, 0, 60],   
@@ -411,40 +418,24 @@
                 }));
             }
 
-            // C. CITY BOUNDARY (Fixed "Grey" Issue)
+            // C. CITY BOUNDARY
             if (cityGeojson) {
-                // 1. THE GLOW (Wider, Brighter, Slight Cyan Tint for "Electric" look)
                 layers.push(new GeoJsonLayer({
-                    id: 'city-glow',
-                    data: cityGeojson,
-                    filled: false,
-                    stroked: true,
-                    getLineColor: [200, 255, 255, 100], // <--- CHANGED: Brighter Alpha (100) + Tint
-                    getLineWidth: 80, 
-                    lineWidthMinPixels: 6
+                    id: 'city-glow', data: cityGeojson, filled: false, stroked: true,
+                    getLineColor: [200, 255, 255, 100], getLineWidth: 80, lineWidthMinPixels: 6
                 }));
-                // 2. THE CORE (Solid White)
                 layers.push(new GeoJsonLayer({
-                    id: 'city-core',
-                    data: cityGeojson,
-                    filled: false,
-                    stroked: true,
-                    getLineColor: [255, 255, 255, 255], 
-                    getLineWidth: 20, 
-                    lineWidthMinPixels: 2
+                    id: 'city-core', data: cityGeojson, filled: false, stroked: true,
+                    getLineColor: [255, 255, 255, 255], getLineWidth: 20, lineWidthMinPixels: 2
                 }));
             }
 
-            // D. USER DRAWING (Fixed "Missing Blue Fill" Issue)
+            // D. USER DRAWING
             if (points.length > 0) {
                 layers.push(new PolygonLayer({
-                    id: 'poly',
-                    data: [{ polygon: points }],
-                    getPolygon: d => d.polygon,
-                    getFillColor: [0, 255, 255, 40], // <--- CHANGED: Restored Blue Opacity
-                    getLineColor: [0, 255, 255, 255], 
-                    getLineWidth: 2, 
-                    lineWidthMinPixels: 2
+                    id: 'poly', data: [{ polygon: points }], getPolygon: d => d.polygon,
+                    getFillColor: [0, 255, 255, 40], getLineColor: [0, 255, 255, 255], 
+                    getLineWidth: 2, lineWidthMinPixels: 2
                 }));
             }
             
