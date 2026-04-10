@@ -383,7 +383,7 @@
                     // Only update ID if URL changes to prevent flicker
                     id: 'heatmap-' + window.resultUrl.split('?')[0], 
                     data: window.resultUrl,
-                    minZoom: 0, maxZoom: 19, tileSize: 256, opacity: 0.6, 
+                    minZoom: 0, maxZoom: 19, tileSize: 256,maxRequests:15, opacity: 0.6, 
                     renderSubLayers: props => {
                         const {bbox: {west, south, east, north}} = props.tile;
                         return new BitmapLayer(props, { data: null, image: props.data, bounds: [west, south, east, north] });
